@@ -5,6 +5,7 @@ import tempfile
 import uuid
 import zipfile
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -24,7 +25,6 @@ from app.models import (
     JobKind,
     Project,
     ProjectStatus,
-    Role,
     Scene,
     Template,
     User,
@@ -53,6 +53,9 @@ def _merge_settings(project: Project, data: ProjectSettingsIn, db: Session, user
     for key in ("music_asset_id", "narration_asset_id", "logo_asset_id"):
         if patch.get(key):
             get_accessible_asset(db, uuid.UUID(patch[key]), user)
+    for aid in patch.get("photo_asset_ids") or []:
+        if get_accessible_asset(db, uuid.UUID(aid), user).kind not in (AssetKind.image, AssetKind.logo):
+            raise HTTPException(422, "as fotos devem ser imagens")
     if patch.get("watermark", {}).get("asset_id"):
         get_accessible_asset(db, uuid.UUID(patch["watermark"]["asset_id"]), user)
     if "style" in patch and patch["style"] != current.get("style"):
@@ -74,6 +77,16 @@ def _merge_settings(project: Project, data: ProjectSettingsIn, db: Session, user
         if k in patch:
             patch[k] = {**current[k], **patch[k]}
     project.settings = {**current, **patch}
+
+
+def _system_music(db: Session, s: dict) -> dict | None:
+    mood = s.get("music_mood")
+    if not mood or mood == "none":
+        return None
+    for a in db.query(Asset).filter(Asset.source == AssetSource.system, Asset.kind == AssetKind.music).all():
+        if (a.meta or {}).get("mood") == mood:
+            return asset_out(a)
+    return None
 
 
 def _detail(project: Project, db: Session) -> dict:
@@ -98,7 +111,7 @@ def _detail(project: Project, db: Session) -> dict:
         **project_summary(project, db),
         "company": project.company, "settings": s, "script": project.script,
         "scenes": scenes, "output": a(project.output_asset_id), "preview": a(project.preview_asset_id),
-        "thumbnail": a(project.thumbnail_asset_id), "music": a(s.get("music_asset_id")),
+        "thumbnail": a(project.thumbnail_asset_id), "music": a(s.get("music_asset_id")) or _system_music(db, s),
         "logo": a(s.get("logo_asset_id")), "narration_track": a(s.get("narration_asset_id")),
         "active_job": job_out(active), "jobs": [job_out(j) for j in jobs],
         "template": {"id": str(project.template.id), "name": project.template.name} if project.template else None,
@@ -433,8 +446,9 @@ def export_project(project: Project = Depends(get_owned_project), db: Session = 
         zf.writestr("project.json", json.dumps(data, ensure_ascii=False, indent=2, default=str))
     buf.seek(0)
     safe = "".join(c for c in project.name if c.isalnum() or c in " -_")[:60].strip() or "projeto"
-    return StreamingResponse(buf, media_type="application/zip",
-                             headers={"Content-Disposition": f'attachment; filename="{safe}.forja.zip"'})
+    ascii_name = safe.encode("ascii", "ignore").decode() or "projeto"
+    disp = f'attachment; filename="{ascii_name}.forja.zip"; filename*=UTF-8\'\'{quote(safe)}.forja.zip'
+    return StreamingResponse(buf, media_type="application/zip", headers={"Content-Disposition": disp})
 
 
 MAX_IMPORT_BYTES = 300 * 1024 * 1024
@@ -522,6 +536,3 @@ def import_project(file: UploadFile = File(...), user: User = Depends(get_curren
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-
-def owner_filter_admin(user: User):
-    return None if user.role == Role.admin else user.id

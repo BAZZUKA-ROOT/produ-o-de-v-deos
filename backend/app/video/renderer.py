@@ -33,6 +33,8 @@ class ScenePlan:
     caption_override: str = ""
     narration_audio: Path | None = None
     narration_duration: float | None = None
+    role: str = "content"
+    decor: bool = False
 
 
 @dataclass
@@ -55,6 +57,7 @@ class RenderPlan:
     target_duration: float | None = 30
     fit_duration: bool = True
     font: str = "Montserrat"
+    visual_style: str = "moderno"
     palette: list[str] = field(default_factory=lambda: ["#111827", "#7C3AED", "#F472B6", "#FFFFFF"])
     subtitles: bool = True
     subtitle_style: str = "boxed"
@@ -176,34 +179,23 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
 
     # 2. Textos e legendas (ASS)
     progress(0.62, "Gerando textos e legendas")
-    doc = AssDoc(w, h, plan.font, plan.palette, plan.subtitle_style)
+    doc = AssDoc(w, h, plan.font, plan.palette, plan.subtitle_style, plan.visual_style)
     positions: set[str] = set()
     for sp, so in zip(plan.scenes, tl.scenes):
         y = _title_y(sp.text_position, h, w)
         end = so.start + so.duration - so.trans_out * 0.6
         start = so.start + (0.15 if so.start == 0 else 0.25)
-        if sp.title:
+        if sp.decor:
+            doc.add_orbs(so.start, so.start + so.duration, hash(sp.id) & 0xFFFF)
+        if sp.title or sp.subtitle:
             positions.add(sp.text_position)
-            doc.add_text(TextEvent(start, end, sp.title, "Title", w // 2, y, sp.text_animation))
+        below = doc.add_title(start, end, sp.title, w // 2, y, sp.text_animation, sp.role) if sp.title else y
         if sp.subtitle:
-            positions.add(sp.text_position)
-            doc.add_text(TextEvent(start, end, sp.subtitle, "Subtitle", w // 2, y + int(min(w, h) * 0.13),
-                                   sp.text_animation, delay=0.25))
+            doc.add_subtitle(start, end, sp.subtitle, w // 2, below + int(min(w, h) * 0.03), sp.text_animation)
         for c in so.captions:
             doc.add_caption(c.start, min(c.end, end + 0.2), c.text)
     if ec.enabled and tl.end_card_start is not None:
-        s0 = tl.end_card_start + 0.3
-        e0 = total - 0.05
-        y = int(h * text_y)
-        step = int(min(w, h) * 0.085)
-        if ec.headline:
-            doc.add_text(TextEvent(s0, e0, ec.headline, "EndHead", w // 2, y, "slide_up"))
-            y += step
-        doc.add_text(TextEvent(s0, e0, ec.company, "EndName", w // 2, y + step // 3, "pop", delay=0.15))
-        y += int(step * 1.6)
-        for k, line in enumerate(ec.lines):
-            doc.add_text(TextEvent(s0, e0, line, "EndInfo", w // 2, y + k * int(step * 0.95), "slide_up",
-                                   delay=0.35 + 0.15 * k))
+        doc.add_end_card(tl.end_card_start + 0.3, total - 0.05, text_y, ec.headline, ec.company, ec.lines)
     if plan.watermark_text and not plan.watermark_image:
         doc.add_watermark(total, plan.watermark_text, plan.watermark_position, plan.watermark_opacity)
     ass_path = work_dir / "texts.ass"

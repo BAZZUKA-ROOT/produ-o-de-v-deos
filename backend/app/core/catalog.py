@@ -101,7 +101,7 @@ def default_project_settings(style: str = "moderno") -> dict:
         "voice_gender": "female",
         "voice_speed": 1.0,
         "subtitles_enabled": True,
-        "subtitle_style": "boxed",
+        "subtitle_style": "highlight",
         "font": preset["font"],
         "palette": preset["palette"],
         "watermark": {"enabled": False, "type": "text", "text": "", "asset_id": None, "position": "top_right",
@@ -109,5 +109,6 @@ def default_project_settings(style: str = "moderno") -> dict:
         "end_card": {"enabled": True, "duration": 4.0, "show_phone": True, "show_instagram": True,
                      "show_address": True, "headline": ""},
         "logo_asset_id": None,
+        "photo_asset_ids": [],
         "fit_duration": True,
     }

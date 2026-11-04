@@ -19,7 +19,8 @@ def defaults() -> dict[str, dict[str, Any]]:
             "ollama_model": s.ollama_model,
             "llm_temperature": 0.7,
             "llm_timeout_seconds": s.llm_timeout_seconds,
-            "image_provider": s.image_provider,  # comfyui | procedural
+            "image_provider": s.image_provider,  # auto | comfyui | pexels | procedural
+            "pexels_api_key": s.pexels_api_key,
             "comfyui_url": s.comfyui_url,
             "comfyui_checkpoint": s.comfyui_checkpoint,
             "comfyui_steps": 25,

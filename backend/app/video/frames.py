@@ -58,8 +58,9 @@ def end_card_image(path: Path, w: int, h: int, palette: list[str], logo_path: Pa
     """Monta a imagem de fundo da tela final; retorna (caminho, posição vertical do bloco de texto 0..1)."""
     with Image.open(bg_path) as bg:
         base = _cover(bg.convert("RGB"), w, h)
-    base = Image.eval(base, lambda v: int(v * 0.65))
-    text_y = 0.42
+    base = base.filter(ImageFilter.GaussianBlur(max(w, h) // 120))
+    base = Image.eval(base, lambda v: int(v * 0.55))
+    text_y = 0.36 if h > w else 0.3
     if logo_path and logo_path.exists():
         with Image.open(logo_path) as lg:
             lg = lg.convert("RGBA")
@@ -73,6 +74,6 @@ def end_card_image(path: Path, w: int, h: int, palette: list[str], logo_path: Pa
             x = (w - card.width) // 2
             y = int(h * 0.12) if h > w else int(h * 0.08)
             base.paste(card, (x, y), mask)
-            text_y = (y + card.height) / h + 0.06
+            text_y = (y + card.height) / h + 0.08
     base.save(path, "JPEG", quality=92)
     return path, min(text_y, 0.6)

@@ -46,11 +46,28 @@ def apply_script(db: Session, project: Project, script: dict, cfg: dict | None) 
             transition=transition, motion=motions[i % len(motions)], text_animation=anim,
             text_position="center" if sd["role"] in ("hook", "cta", "offer") else "top",
         ))
+    _assign_photos(project, s.get("photo_asset_ids") or [])
     project.script = {k: v for k, v in script.items() if k != "scenes"}
     end = dict(s["end_card"])
     if not end.get("headline"):
         end["headline"] = script.get("cta", "")
     project.settings = {**(project.settings or {}), "end_card": end}
+
+
+PHOTO_PRIORITY = {"product": 0, "offer": 1, "differential": 2, "benefit": 3, "hook": 4, "social_proof": 5,
+                  "content": 6, "problem": 7, "cta": 8}
+
+
+def _assign_photos(project: Project, photo_ids: list[str]) -> None:
+    """Distribui as fotos enviadas pelo usuário nas cenas (produto/oferta primeiro); repete se faltar."""
+    if not photo_ids:
+        return
+    order = sorted(project.scenes, key=lambda sc: (PHOTO_PRIORITY.get(sc.role, 6), sc.position))
+    for i, sc in enumerate(order):
+        if i >= len(photo_ids) and len(photo_ids) < 3:
+            break
+        sc.image_asset_id = uuid.UUID(str(photo_ids[i % len(photo_ids)]))
+        sc.fit = "contain_blur" if sc.role in ("product", "offer") else "cover"
 
 
 def run_script(db: Session, project: Project, ctx: JobContext) -> dict:
@@ -90,16 +107,22 @@ def generate_images(db: Session, project: Project, ctx: JobContext, scene_ids: l
         ctx.progress(p0 + (p1 - p0) * i / max(len(targets), 1), f"Gerando imagem {i + 1}/{len(targets)}", force=True)
         tmp = get_settings().temp_dir / f"img_{uuid.uuid4().hex}"
         prompt = sc.image_prompt or sc.title or project.name
-        path, engine, warn = generate_scene_image(prompt, tmp, w, h, ai, s["palette"], style_hint, ctx.is_cancelled)
+        path, engine, warn = generate_scene_image(prompt, tmp, w, h, ai, s["palette"], style_hint, ctx.is_cancelled,
+                                                  seed_text=f"{project.id}:{sc.position}:{prompt}")
         if warn and warn not in warnings:
             warnings.append(warn)
             ctx.log(warn)
         mime = "image/png" if path.suffix == ".png" else "image/jpeg"
+        if engine == "pexels":
+            sc_meta_src = "Pexels (licença Pexels: uso comercial livre)"
+        else:
+            sc_meta_src = None
         stored = storage.store_generated(path, project.owner_id, path.suffix, mime)
         asset = storage.create_asset(
             db, stored, owner_id=project.owner_id, project_id=project.id,
             kind=AssetKind.image, source=AssetSource.ai if engine != "procedural" else AssetSource.generated,
-            name=f"{project.name} · cena {sc.position + 1}", meta={"engine": engine, "prompt": prompt},
+            name=f"{project.name} · cena {sc.position + 1}",
+            meta={"engine": engine, "prompt": prompt, **({"license": sc_meta_src} if sc_meta_src else {})},
         )
         sc.image_asset_id = asset.id
         db.commit()
@@ -199,7 +222,8 @@ def build_plan(db: Session, project: Project, quality: str) -> renderer.RenderPl
             id=str(sc.id), image=img, duration=sc.duration, transition=sc.transition, motion=sc.motion, fit=sc.fit,
             title=sc.title, subtitle=sc.subtitle, text_animation=sc.text_animation, text_position=sc.text_position,
             narration_text=sc.narration, caption_override=sc.caption_override,
-            narration_audio=narr, narration_duration=sc.narration_duration if narr else None,
+            narration_audio=narr, narration_duration=sc.narration_duration if narr else None, role=sc.role,
+            decor=bool(sc.image_asset and (sc.image_asset.meta or {}).get("engine") == "procedural"),
         ))
     music = None
     if s.get("music_asset_id"):
@@ -224,7 +248,7 @@ def build_plan(db: Session, project: Project, quality: str) -> renderer.RenderPl
     return renderer.RenderPlan(
         scenes=scenes, format=s["format"], quality=quality, fps=int(rcfg["fps"]),
         target_duration=float(s["duration"]), fit_duration=bool(s.get("fit_duration", True)),
-        font=s["font"], palette=s["palette"], subtitles=bool(s["subtitles_enabled"]),
+        font=s["font"], visual_style=s["style"], palette=s["palette"], subtitles=bool(s["subtitles_enabled"]),
         subtitle_style=s["subtitle_style"], narration_enabled=bool(s["narration_enabled"]),
         narration_track=narration_track, music=music, music_volume=float(s["music_volume"]),
         watermark_text=(wm.get("text") or company.get("name") or "") if wm.get("enabled") and wm.get("type") == "text" else "",

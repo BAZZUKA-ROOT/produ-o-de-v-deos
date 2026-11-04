@@ -191,12 +191,35 @@ def normalize_script(script: dict, settings: dict) -> dict:
     return script
 
 
-def enrich_script(script: dict, template_cfg: dict | None) -> dict:
-    """Completa lacunas comuns em modelos pequenos (títulos vazios, prompts de imagem pobres)."""
+GENERIC_TITLES = {"hook", "gancho", "benefit", "benefício", "beneficio", "offer", "oferta", "differential",
+                  "diferencial", "diferenciais", "cta", "produto", "product", "whatsapp", "instagram", "endereço",
+                  "contato", "inscreva-se", "chamada", "problema", "conteúdo", "prova social"}
+PT_HINT = re.compile(r"[ãõçáéíóúâêô]|\b(de|da|do|com|uma|um|para|em)\b", re.I)
+
+
+def _limit_scenes(script: dict, n: int) -> dict:
+    scenes = script["scenes"]
+    if len(scenes) <= n:
+        return script
+    body = [sc for sc in scenes if sc["role"] != "cta"][: n - 1]
+    ctas = [sc for sc in scenes if sc["role"] == "cta"] or [scenes[-1]]
+    script["scenes"] = body + [ctas[0]]
+    return script
+
+
+def enrich_script(script: dict, template_cfg: dict | None, settings: dict | None = None) -> dict:
+    """Completa lacunas comuns em modelos pequenos (títulos vazios/genéricos, prompts pobres, cenas demais)."""
     cfg = template_cfg or {}
+    if settings:
+        _limit_scenes(script, scene_count(settings, len(cfg.get("blueprint", []))))
+        script = normalize_script(script, settings)
     hints = {b["role"]: b.get("image", "") for b in cfg.get("blueprint", [])}
     style = cfg.get("image_style", "professional commercial photography, high quality")
     for sc in script["scenes"]:
+        if sc["title"].strip().lower() in GENERIC_TITLES:
+            sc["title"] = ""
+        if sc["image_prompt"] and PT_HINT.search(sc["image_prompt"]):
+            sc["image_prompt"] = ""
         if not sc["title"]:
             words = re.sub(r"[.!?]+$", "", sc["narration"]).split()
             sc["title"] = _cap(" ".join(words[:6]))
@@ -287,7 +310,7 @@ def ollama_script(company: dict, settings: dict, template_cfg: dict | None, ai_c
             raise LLMError("resposta do LLM não é JSON")
         data = json.loads(m.group(0))
     data["engine"] = f"ollama:{ai_cfg['ollama_model']}"
-    script = enrich_script(normalize_script(data, settings), template_cfg)
+    script = enrich_script(normalize_script(data, settings), template_cfg, settings)
     if len(script["scenes"]) < 2:
         raise LLMError("roteiro do LLM com poucas cenas")
     return script

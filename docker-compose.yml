@@ -1,0 +1,107 @@
+name: forja
+
+x-backend: &backend
+  build: ./backend
+  image: forja-backend:latest
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-forja}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-forja}
+    REDIS_URL: redis://redis:6379/0
+    OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+    COMFYUI_URL: ${COMFYUI_URL:-http://comfyui:8188}
+    USE_X_ACCEL: "true"
+  volumes:
+    - storage:/data/storage
+    - tmp:/data/tmp
+    - ${MODELS_PATH:-./models}:/data/models
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forja}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-forja}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forja} -d ${POSTGRES_DB:-forja}"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  api:
+    <<: *backend
+    command: ["api"]
+    expose: ["8000"]
+
+  worker:
+    <<: *backend
+    command: ["worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-forja}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-forja}
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      COMFYUI_URL: ${COMFYUI_URL:-http://comfyui:8188}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    depends_on:
+      api: { condition: service_healthy }
+
+  beat:
+    <<: *backend
+    command: ["beat"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_APP_NAME: ${APP_NAME:-Forja Studio}
+    image: forja-web:latest
+    restart: unless-stopped
+    ports: ["${HTTP_PORT:-8080}:80"]
+    volumes: [storage:/data/storage:ro]
+    depends_on: [api]
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes: [ollama:/root/.ollama]
+    expose: ["11434"]
+    profiles: ["ollama", "full"]
+
+  comfyui:
+    build:
+      context: ./docker/comfyui
+      args:
+        TORCH_VARIANT: ${COMFYUI_TORCH_VARIANT:-cpu}
+    image: forja-comfyui:latest
+    restart: unless-stopped
+    volumes:
+      - ${COMFYUI_MODELS_PATH:-./models/comfyui}:/opt/ComfyUI/models
+      - comfyui_output:/opt/ComfyUI/output
+    expose: ["8188"]
+    profiles: ["comfyui", "full"]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
+  tmp:
+  ollama:
+  comfyui_output:

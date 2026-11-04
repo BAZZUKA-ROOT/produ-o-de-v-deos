@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     llm_timeout_seconds: int = 300
 
-    image_provider: str = "procedural"
+    image_provider: str = "auto"
+    pexels_api_key: str = ""
     comfyui_url: str = "http://localhost:8188"
     comfyui_checkpoint: str = "sd_xl_base_1.0.safetensors"
     comfyui_timeout_seconds: int = 600
