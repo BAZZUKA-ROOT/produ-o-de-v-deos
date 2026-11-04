@@ -8,11 +8,15 @@ automáticas, trilha, transições e exportação MP4 — sem APIs pagas.
 - **Assistente de criação**: template por segmento → dados da empresa + fotos → formato/duração/estilo → roteiro IA editável.
 - **IA local**: roteiro via Ollama (Qwen 2.5, Apache-2.0) com fallback determinístico por templates; imagens via ComfyUI
   (SDXL/SD 1.5); voz via Kokoro-82M (feminina/masculina pt-BR), Piper e eSpeak NG.
+- **Apresentação de produtos**: recorte automático do produto (IS-Net, local) e compositor em camadas — estúdio com
+  luz, sombra e reflexo, entrada animada, flutuação, faixa de brilho; layouts **produto em destaque**, **produto + preço**
+  (selo), **produto + destaques**, **galeria**, **CTA** e **tipografia animada** (quando não há foto), escolhidos
+  automaticamente por cena.
 - **Render FFmpeg**: Ken Burns com OpenCV (subpixel), 20 transições `xfade`, textos animados (libass), títulos por estilo,
-  selo de preço, legendas karaokê, trilha com *ducking*, normalização de loudness (-14 LUFS), marca d'água, tela final.
+  legendas karaokê, trilha com *ducking*, normalização de loudness (-14 LUFS), marca d'água, tela final.
 - **Editor**: player ao vivo, timeline com arrastar/reordenar/redimensionar, inspetor de cena, prévia renderizada rápida.
 - **Projetos**: salvar, duplicar, exportar/importar (.zip), excluir; vídeos ficam disponíveis enquanto o projeto existir.
-- **40 templates** em 12 segmentos. **Biblioteca** de imagens, logos, músicas e áudios com cota por usuário.
+- **44 templates** em 13 segmentos (incluindo *Apresentação de produtos*). **Biblioteca** de imagens, logos, músicas e áudios com cota por usuário.
 - **Admin**: usuários, projetos, histórico de renders, fila/workers, logs de erro, modelos de IA (download de modelos
   Ollama), armazenamento, templates, CPU/RAM/disco e status dos serviços.
 - **Fila**: Celery + Redis com progresso, cancelamento, retentativas controladas, logs por tarefa e notificações.

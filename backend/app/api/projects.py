@@ -94,8 +94,14 @@ def _detail(project: Project, db: Session) -> dict:
     ai = runtime_settings.get_section(db, "ai")
     provider = s.get("tts_provider") or ai["tts_provider"]
     scenes = []
+    n_photos = len(s.get("photo_asset_ids") or []) or len(
+        [sc for sc in project.scenes if sc.image_asset and (sc.image_asset.meta or {}).get("engine") != "procedural"])
     for sc in project.scenes:
         d = scene_out(sc)
+        procedural = not sc.image_asset or (sc.image_asset.meta or {}).get("engine") == "procedural"
+        has_cut = bool(d["cutout_url"] and d["cutout_usable"]) or (
+            bool(sc.image_asset) and not procedural and "cutout_usable" not in (sc.image_asset.meta or {}))
+        d["resolved_layout"] = pipeline.resolve_layout(sc, has_cut, n_photos, procedural)
         d["narration_stale"] = bool(sc.narration.strip()) and (
             sc.narration_asset_id is None
             or sc.narration_signature != pipeline._narr_signature(sc.narration, provider, s["voice_gender"],
@@ -230,7 +236,8 @@ def duplicate_project(project: Project = Depends(get_owned_project), user: User 
             position=sc.position, role=sc.role, title=sc.title, subtitle=sc.subtitle, narration=sc.narration,
             caption_override=sc.caption_override, image_prompt=sc.image_prompt, duration=sc.duration,
             transition=sc.transition, motion=sc.motion, text_animation=sc.text_animation,
-            text_position=sc.text_position, fit=sc.fit, image_asset_id=sc.image_asset_id,
+            text_position=sc.text_position, fit=sc.fit, layout=sc.layout, bullets=sc.bullets,
+            image_asset_id=sc.image_asset_id,
             narration_asset_id=sc.narration_asset_id, narration_duration=sc.narration_duration,
             narration_signature=sc.narration_signature,
         ))

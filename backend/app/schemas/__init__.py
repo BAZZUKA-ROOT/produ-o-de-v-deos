@@ -190,6 +190,8 @@ class SceneIn(Strict):
     text_animation: str | None = None
     text_position: str | None = None
     fit: str | None = None
+    layout: str | None = None
+    bullets: str | None = Field(default=None, max_length=600)
     image_asset_id: uuid.UUID | None = None
     clear_image: bool | None = None
 
@@ -219,6 +221,15 @@ class SceneIn(Strict):
     def _p(cls, v):
         if v is not None and v not in TEXT_POSITIONS:
             raise ValueError("posição inválida")
+        return v
+
+    @field_validator("layout")
+    @classmethod
+    def _l(cls, v):
+        from app.video.compose import LAYOUTS
+
+        if v is not None and v not in LAYOUTS:
+            raise ValueError("layout inválido")
         return v
 
     @field_validator("fit")

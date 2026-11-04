@@ -1,6 +1,7 @@
 """Etapas de produção executadas pelo worker: roteiro, imagens, narração e renderização."""
 
 import hashlib
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -35,6 +36,8 @@ def apply_script(db: Session, project: Project, script: dict, cfg: dict | None) 
     motion_default = tcfg.get("motion") or STYLE_PRESETS.get(s["style"], {}).get("motion", "zoom_in")
     anim = tcfg.get("text_animation") or STYLE_PRESETS.get(s["style"], {}).get("animation", "fade")
     motions = [motion_default, "zoom_out", "pan_left", "zoom_in", "pan_right", "zoom_in_left"]
+    diffs = [d.strip() for d in re.split(r"[,;\n]", (project.company or {}).get("differentials") or "") if d.strip()]
+    bullets = [d[:1].upper() + d[1:] for d in diffs[:4]]
     for sc in list(project.scenes):
         db.delete(sc)
     db.flush()
@@ -45,7 +48,11 @@ def apply_script(db: Session, project: Project, script: dict, cfg: dict | None) 
             narration=sd["narration"], image_prompt=sd["image_prompt"], duration=sd["duration"],
             transition=transition, motion=motions[i % len(motions)], text_animation=anim,
             text_position="center" if sd["role"] in ("hook", "cta", "offer") else "top",
+            bullets="\n".join(bullets) if sd["role"] in ("differential", "benefit") and bullets else "",
         ))
+    for sc in project.scenes:
+        if sc.bullets and sc.title.strip().lower() in [b.lower() for b in bullets]:
+            sc.title = f"Por que escolher a {(project.company or {}).get('name') or 'gente'}?"
     _assign_photos(project, s.get("photo_asset_ids") or [])
     project.script = {k: v for k, v in script.items() if k != "scenes"}
     end = dict(s["end_card"])
@@ -208,17 +215,102 @@ def _asset_path(db: Session, asset_id, owner_id) -> Path | None:
     return p if p.exists() else None
 
 
-def build_plan(db: Session, project: Project, quality: str) -> renderer.RenderPlan:
+PRODUCT_LAYOUTS = ("hero", "price", "features", "cta")
+
+
+def ensure_cutout(db: Session, asset: Asset) -> tuple[Path | None, bool]:
+    """Recorte do produto (fundo removido), com cache como asset derivado."""
+    from app.ai.image import cutout
+
+    meta = dict(asset.meta or {})
+    if meta.get("engine") == "procedural" or asset.kind not in (AssetKind.image, AssetKind.logo):
+        return None, False
+    cid = meta.get("cutout_asset_id")
+    if cid:
+        c = db.get(Asset, uuid.UUID(cid))
+        if c and storage.abs_path(c.storage_path).exists():
+            return storage.abs_path(c.storage_path), bool(meta.get("cutout_usable"))
+    if not cutout.available():
+        return None, False
+    src = storage.abs_path(asset.storage_path)
+    tmp = get_settings().temp_dir / f"cut_{uuid.uuid4().hex}.png"
+    try:
+        res = cutout.remove_background(src, tmp)
+    except cutout.CutoutError:
+        meta["cutout_usable"] = False
+        asset.meta = meta
+        db.commit()
+        return None, False
+    stored = storage.store_generated(res.path, asset.owner_id, ".png", "image/png")
+    c = storage.create_asset(db, stored, owner_id=asset.owner_id, project_id=None, kind=AssetKind.image,
+                             source=AssetSource.generated, name=f"{asset.name} · recorte", in_library=False,
+                             meta={"cutout_of": str(asset.id), "coverage": round(res.coverage, 3)})
+    meta.update(cutout_asset_id=str(c.id), cutout_usable=res.usable)
+    asset.meta = meta
+    db.commit()
+    return storage.abs_path(c.storage_path), res.usable
+
+
+def resolve_layout(sc: Scene, has_cutout: bool, n_photos: int, procedural: bool) -> str:
+    lay = sc.layout or "auto"
+    if lay != "auto":
+        if lay in PRODUCT_LAYOUTS and not has_cutout:
+            return "fullscreen"
+        if lay == "gallery" and n_photos < 2:
+            return "fullscreen"
+        return lay
+    if procedural:
+        return "kinetic" if sc.role in ("hook", "offer", "benefit", "cta") else "fullscreen"
+    if sc.role == "hook" and n_photos >= 3:
+        return "gallery"
+    if not has_cutout:
+        return "fullscreen"
+    return {"product": "hero", "offer": "price", "differential": "features" if sc.bullets.strip() else "hero",
+            "benefit": "features" if sc.bullets.strip() else "hero", "cta": "cta"}.get(sc.role, "hero")
+
+
+def project_photos(db: Session, project: Project) -> list[Path]:
+    s = project_settings(project)
+    paths: list[Path] = []
+    for aid in s.get("photo_asset_ids") or []:
+        p = _asset_path(db, aid, project.owner_id)
+        if p and p not in paths:
+            paths.append(p)
+    if len(paths) < 2:
+        for sc in project.scenes:
+            a = sc.image_asset
+            if a and (a.meta or {}).get("engine") != "procedural":
+                p = _asset_path(db, a.id, project.owner_id)
+                if p and p not in paths:
+                    paths.append(p)
+    return paths[:4]
+
+
+def build_plan(db: Session, project: Project, quality: str, ctx: JobContext | None = None) -> renderer.RenderPlan:
     s = project_settings(project)
     rcfg = runtime_settings.get_section(db, "render")
     company = project.company or {}
     scenes = []
+    photos = project_photos(db, project)
     for sc in project.scenes:
         img = _asset_path(db, sc.image_asset_id, project.owner_id)
         if img is None:
             raise RuntimeError(f"cena {sc.position + 1} sem imagem")
         narr = _asset_path(db, sc.narration_asset_id, project.owner_id) if s["narration_enabled"] else None
+        procedural = bool(sc.image_asset and (sc.image_asset.meta or {}).get("engine") == "procedural")
+        product, usable = (None, False)
+        wants_product = (sc.layout or "auto") in ("auto", *PRODUCT_LAYOUTS)
+        if sc.image_asset and not procedural and wants_product:
+            if ctx:
+                ctx.progress(0.4, f"Recortando produto da cena {sc.position + 1}", force=True)
+            product, usable = ensure_cutout(db, sc.image_asset)
+            if sc.layout in PRODUCT_LAYOUTS and product is not None:
+                usable = True
+        layout = resolve_layout(sc, usable and product is not None, len(photos), procedural)
         scenes.append(renderer.ScenePlan(
+            layout=layout, product=product if layout in PRODUCT_LAYOUTS else None,
+            photos=photos if layout == "gallery" else [],
+            bullets=[b.strip() for b in sc.bullets.splitlines() if b.strip()][:4],
             id=str(sc.id), image=img, duration=sc.duration, transition=sc.transition, motion=sc.motion, fit=sc.fit,
             title=sc.title, subtitle=sc.subtitle, text_animation=sc.text_animation, text_position=sc.text_position,
             narration_text=sc.narration, caption_override=sc.caption_override,
@@ -283,7 +375,7 @@ def run_render(db: Session, project: Project, ctx: JobContext, preview: bool) ->
         warnings += generate_narration(db, project, ctx, False, 0.3, 0.4)
     db.refresh(project)
     quality = rcfg["preview_quality"] if preview else s.get("quality") or rcfg["default_quality"]
-    plan = build_plan(db, project, quality)
+    plan = build_plan(db, project, quality, ctx)
     work = get_settings().temp_dir / f"render_{ctx.job_id.hex}"
 
     def prog(p: float, stage: str) -> None:

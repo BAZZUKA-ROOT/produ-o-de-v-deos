@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.catalog import resolution
-from app.video import frames, motion, timeline
+from app.video import compose, frames, motion, timeline
 from app.video.ass import AssDoc, TextEvent
 
 log = logging.getLogger(__name__)
@@ -35,6 +35,10 @@ class ScenePlan:
     narration_duration: float | None = None
     role: str = "content"
     decor: bool = False
+    layout: str = "fullscreen"            # resolvido (sem "auto")
+    product: Path | None = None           # recorte PNG do produto
+    photos: list[Path] = field(default_factory=list)
+    bullets: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -156,10 +160,19 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
         return cb
 
     for i, (sp, so) in enumerate(zip(plan.scenes, tl.scenes)):
-        src = frames.prepare_source(sp.image, w, h, sp.fit, sp.motion)
         clip = work_dir / f"scene_{i:02d}.mp4"
-        motion.render_clip(src, clip, w, h, so.duration, fps, sp.motion, clip_preset, clip_crf,
-                           frame_cb(done_s, so.duration), should_cancel)
+        if sp.layout in ("hero", "price", "features", "cta") and sp.product is not None or \
+                sp.layout == "gallery" and len(sp.photos) >= 2 or sp.layout == "kinetic":
+            entry = {"price": "slide_left", "cta": "slide_up"}.get(sp.layout, "pop")
+            spec = compose.SceneSpec(sp.layout, so.duration, plan.palette, sp.product, sp.photos, entry)
+            compose.render_scene(spec, clip, w, h, fps, clip_preset, clip_crf,
+                                 bg_image=sp.image if sp.layout == "kinetic" else None,
+                                 on_frame=frame_cb(done_s, so.duration), should_cancel=should_cancel)
+        else:
+            sp.layout = "fullscreen"
+            src = frames.prepare_source(sp.image, w, h, sp.fit, sp.motion)
+            motion.render_clip(src, clip, w, h, so.duration, fps, sp.motion, clip_preset, clip_crf,
+                               frame_cb(done_s, so.duration), should_cancel)
         clip_paths.append(clip)
         durations.append(so.duration)
         done_s += so.duration
@@ -182,16 +195,40 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
     doc = AssDoc(w, h, plan.font, plan.palette, plan.subtitle_style, plan.visual_style)
     positions: set[str] = set()
     for sp, so in zip(plan.scenes, tl.scenes):
-        y = _title_y(sp.text_position, h, w)
         end = so.start + so.duration - so.trans_out * 0.6
         start = so.start + (0.15 if so.start == 0 else 0.25)
-        if sp.decor:
+        if sp.decor or sp.layout == "kinetic" and not sp.image:
             doc.add_orbs(so.start, so.start + so.duration, hash(sp.id) & 0xFFFF)
-        if sp.title or sp.subtitle:
-            positions.add(sp.text_position)
-        below = doc.add_title(start, end, sp.title, w // 2, y, sp.text_animation, sp.role) if sp.title else y
-        if sp.subtitle:
-            doc.add_subtitle(start, end, sp.subtitle, w // 2, below + int(min(w, h) * 0.03), sp.text_animation)
+        if sp.layout == "kinetic":
+            doc.add_kinetic(start, end, sp.title or sp.subtitle, int(h * 0.42))
+            if sp.subtitle and sp.title:
+                doc.add_subtitle(start + 0.6, end, sp.subtitle, w // 2, int(h * 0.72), "slide_up")
+            positions.add("center")
+        elif sp.layout != "fullscreen":
+            g = compose.geometry(sp.layout, w, h)
+            align = g.title_align
+            tx = int(w * g.text_x)
+            max_w = w * (0.9 - g.text_x) if align == "left" else None
+            ty = int(h * g.title_y)
+            positions.add("top" if g.title_y < 0.3 else "center")
+            badge = None
+            if g.badge:
+                badge = (int(w * g.badge[0]), int(h * g.badge[1]))
+            below = doc.add_title(start, end, sp.title, tx, ty, sp.text_animation, sp.role, align, max_w, badge) \
+                if sp.title else ty
+            if sp.subtitle:
+                doc.add_subtitle(start, end, sp.subtitle, tx, below + int(min(w, h) * 0.03), sp.text_animation,
+                                 align, max_w)
+            if sp.bullets and g.bullets_y is not None:
+                doc.add_bullets(start, end, sp.bullets, tx if align == "left" else w // 2, int(h * g.bullets_y),
+                                align, max_w)
+        else:
+            y = _title_y(sp.text_position, h, w)
+            if sp.title or sp.subtitle:
+                positions.add(sp.text_position)
+            below = doc.add_title(start, end, sp.title, w // 2, y, sp.text_animation, sp.role) if sp.title else y
+            if sp.subtitle:
+                doc.add_subtitle(start, end, sp.subtitle, w // 2, below + int(min(w, h) * 0.03), sp.text_animation)
         for c in so.captions:
             doc.add_caption(c.start, min(c.end, end + 0.2), c.text)
     if ec.enabled and tl.end_card_start is not None:

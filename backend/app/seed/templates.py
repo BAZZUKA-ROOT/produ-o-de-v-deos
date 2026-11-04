@@ -6,6 +6,15 @@ from app.core.catalog import STYLE_PRESETS
 from app.models import Template
 
 CATEGORIES: dict[str, dict] = {
+    "produtos": {
+        "label": "Apresentação de produtos",
+        "image_style": "studio product photography, clean background, soft shadows, high detail",
+        "hook": "Conheça a novidade!",
+        "product_img": "product on a clean studio background with soft light",
+        "place_img": "modern store display with products",
+        "cta": "Garanta o seu pelo WhatsApp!",
+        "benefit": "Qualidade que você sente no primeiro uso.",
+    },
     "restaurantes": {
         "label": "Restaurantes",
         "image_style": "professional food photography, restaurant interior, warm cinematic light, shallow depth of field",
@@ -123,6 +132,10 @@ VARIANTS = [
 ]
 
 EXTRA_VARIANTS = {
+    "produtos": [("produto", "moderno", "Lançamento moderno", "Galeria, produto em destaque, destaques e preço."),
+                 ("produto", "comercial", "Oferta de produto", "Visual de varejo com selo de preço chamativo."),
+                 ("produto", "elegante", "Produto premium", "Tom sofisticado para itens de alto valor."),
+                 ("produto", "tecnologico", "Produto tech", "Estilo tecnológico para eletrônicos e gadgets.")],
     "restaurantes": [("produto", "criativo", "Prato em destaque", "Foco total em um prato ou combo.")],
     "clinicas_medicas": [("institucional", "profissional", "Confiança médica", "Tom sóbrio e acolhedor.")],
     "empresas": [("anuncio", "tecnologico", "Tech launch", "Estilo tecnológico para produtos e SaaS.")],
@@ -155,7 +168,8 @@ def _blueprint(cat: dict, video_type: str) -> list[dict]:
 def build_templates() -> list[dict]:
     out = []
     for slug, cat in CATEGORIES.items():
-        for video_type, style, name, desc in VARIANTS + EXTRA_VARIANTS.get(slug, []):
+        variants = EXTRA_VARIANTS[slug] if slug == "produtos" else VARIANTS + EXTRA_VARIANTS.get(slug, [])
+        for video_type, style, name, desc in variants:
             preset = STYLE_PRESETS[style]
             out.append({
                 "slug": f"{slug}-{video_type}-{style}",

@@ -34,6 +34,9 @@ export function SceneInspector({ scene, index, opts, onChange, onDelete, onDupli
           <Button size="sm" variant="ghost" icon={<ImageOff className="size-3.5" />} disabled={!scene.image} onClick={() => onChange({ clear_image: true }, null)}>Remover</Button>
         </div>
       </div>
+      <Field label="Layout da cena" hint={scene.layout === "auto" && scene.resolved_layout ? `Automático → ${label(scene.resolved_layout)}` : "Layouts de produto usam o recorte automático da foto"}>
+        <Select value={scene.layout} onChange={(e) => onChange({ layout: e.target.value })} options={optionList(opts.layouts)} />
+      </Field>
       <Field label="Prompt da imagem (inglês funciona melhor)"><Textarea rows={2} value={scene.image_prompt} onChange={(e) => onChange({ image_prompt: e.target.value })} /></Field>
 
       <Field label="Texto na tela"><Input value={scene.title} onChange={(e) => onChange({ title: e.target.value })} /></Field>
@@ -42,6 +45,9 @@ export function SceneInspector({ scene, index, opts, onChange, onDelete, onDupli
         <Textarea rows={3} value={scene.narration} onChange={(e) => onChange({ narration: e.target.value })} />
       </Field>
       {scene.narration_stale && <p className="-mt-2 flex items-center gap-1.5 text-[11px] text-warn"><AlertTriangle className="size-3" />Áudio desatualizado — será regerado ao renderizar ou em “Gerar narração”.</p>}
+      <Field label="Destaques do produto (um por linha)" hint="Aparecem no layout “Produto + destaques”">
+        <Textarea rows={3} value={scene.bullets} onChange={(e) => onChange({ bullets: e.target.value })} />
+      </Field>
       <Field label="Legenda personalizada" hint="Vazio = usa o texto da narração"><Textarea rows={2} value={scene.caption_override} onChange={(e) => onChange({ caption_override: e.target.value })} /></Field>
 
       <div className="grid grid-cols-2 gap-3">

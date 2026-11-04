@@ -73,6 +73,62 @@ function TitleView({ text, role, style, font, m, pal, local }: { text: string; r
   );
 }
 
+type Geo = { box?: [number, number, number, number]; titleY: number; left?: boolean; textX?: number; bulletsY?: number; badge?: [number, number] };
+function geometry(layout: string, w: number, h: number): Geo {
+  const vertical = h > w * 1.15;
+  const square = !vertical && w < h * 1.15;
+  switch (layout) {
+    case "hero": return vertical ? { box: [0.5, 0.53, 0.84, 0.44], titleY: 0.15 } : square ? { box: [0.5, 0.58, 0.7, 0.58], titleY: 0.13 } : { box: [0.68, 0.53, 0.5, 0.74], titleY: 0.42, left: true, textX: 0.07 };
+    case "price": return vertical ? { box: [0.46, 0.45, 0.78, 0.38], titleY: 0.13, badge: [0.7, 0.63] } : square ? { box: [0.4, 0.55, 0.62, 0.62], titleY: 0.12, badge: [0.75, 0.62] } : { box: [0.33, 0.55, 0.45, 0.75], titleY: 0.3, left: true, textX: 0.6, badge: [0.75, 0.62] };
+    case "features": return vertical ? { box: [0.5, 0.4, 0.7, 0.3], titleY: 0.12, bulletsY: 0.63 } : square ? { box: [0.3, 0.55, 0.48, 0.62], titleY: 0.12, left: true, textX: 0.56, bulletsY: 0.42 } : { box: [0.3, 0.53, 0.45, 0.78], titleY: 0.25, left: true, textX: 0.58, bulletsY: 0.45 };
+    case "cta": return vertical ? { box: [0.5, 0.3, 0.62, 0.3], titleY: 0.58 } : { box: [0.3, 0.52, 0.42, 0.66], titleY: 0.42, left: true, textX: 0.56 };
+    case "gallery": return { titleY: vertical ? 0.13 : 0.12 };
+    case "kinetic": return { titleY: 0.45 };
+    default: return { titleY: vertical ? 0.42 : 0.4 };
+  }
+}
+const backOut = (t: number) => { const x = Math.min(Math.max(t, 0), 1); return 1 + 2.4 * (x - 1) ** 3 + 1.4 * (x - 1) ** 2; };
+
+function Badge({ text, m, pal, local }: { text: string; m: number; pal: string[]; local: number }) {
+  const r = m * 0.26;
+  const e = backOut(local / 0.36);
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: r * 2, height: r * 2, transform: `scale(${0.3 + 0.7 * e})`, opacity: Math.min(local / 0.1, 1) }}>
+      <svg viewBox="-100 -100 200 200" className="absolute inset-0 drop-shadow-xl" style={{ transform: `rotate(${-8 * Math.min(local / 4, 1)}deg)` }}>
+        <polygon fill={pal[2]} points={Array.from({ length: 36 }, (_, i) => { const a = (Math.PI * i) / 18; const rr = i % 2 ? 88 : 100; return `${rr * Math.cos(a)},${rr * Math.sin(a)}`; }).join(" ")} />
+      </svg>
+      <span className="relative text-center font-black leading-tight" style={{ fontFamily: "Montserrat", fontSize: m * 0.1, color: lum(pal[2]) > 0.55 ? "#111" : "#fff", transform: "rotate(-4deg)" }}>{text}</span>
+    </div>
+  );
+}
+
+function Kinetic({ text, m, w, pal, font, local }: { text: string; m: number; w: number; pal: string[]; font: string; local: number }) {
+  const upper = UPPER.has(font);
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  for (const wd of words) {
+    if (lines.length && lines[lines.length - 1].length + wd.length < 9 && wd.length <= 4) lines[lines.length - 1] += ` ${wd}`;
+    else lines.push(wd);
+  }
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  const size = Math.min(m * (upper ? 0.22 : 0.17), (w * 0.86) / (longest * (upper ? 0.5 : 0.6)));
+  const hl = lines.length > 1 ? Math.floor(lines.length / 2) : -1;
+  const onAccent = lum(pal[2]) > 0.55 ? "#111" : "#fff";
+  return (
+    <div className="flex flex-col items-center" style={{ gap: size * 0.08 }}>
+      {lines.map((ln, k) => {
+        const lt = local - 0.12 * k;
+        const e = Math.min(Math.max(lt / 0.32, 0), 1);
+        return (
+          <span key={k} className="font-bold leading-none" style={{ fontFamily: font, fontSize: size, textTransform: upper ? "uppercase" : undefined, opacity: e,
+            transform: `translateX(${(1 - ease(e)) * (k % 2 ? -25 : 25)}%)`, color: k === hl ? onAccent : k % 2 ? pal[2] : pal[3],
+            background: k === hl ? pal[2] : undefined, padding: k === hl ? "0.04em 0.25em" : undefined, textShadow: k === hl ? undefined : "0 3px 10px rgba(0,0,0,.5)" }}>{ln}</span>
+        );
+      })}
+    </div>
+  );
+}
+
 const titleTop = (pos: string, vertical: boolean) => (pos === "top" ? (vertical ? 20 : 18) : pos === "bottom" ? (vertical ? 66 : 62) : vertical ? 42 : 40);
 
 export function Player({ project, timeline, onSelect, time, setTime }: {
@@ -211,7 +267,81 @@ export function Player({ project, timeline, onSelect, time, setTime }: {
           {layers.map(({ sc, ts, opacity }) => {
             const p = (time - ts.start) / ts.duration;
             const local = time - ts.start - (ts.start === 0 ? 0.15 : 0.25);
+            const t = time - ts.start;
             const bg = sc.image?.url;
+            const layout = sc.layout === "auto" ? sc.resolved_layout ?? "fullscreen" : sc.layout;
+            const g = geometry(layout, size.w, size.h);
+            const productUrl = sc.cutout_url;
+            const productLayout = ["hero", "price", "features", "cta"].includes(layout) && productUrl;
+            const studio = `radial-gradient(ellipse at ${(g.box?.[0] ?? 0.5) * 100}% ${(g.box?.[1] ?? 0.5) * 100}%, ${pal[1]} 0%, ${pal[0]} 75%)`;
+            const titleBlock = (sc.title || sc.subtitle) && local > 0 && (
+              <div className={clsx("absolute flex -translate-y-1/2 flex-col gap-[0.6em]", g.left ? "items-start text-left" : "inset-x-[8%] items-center text-center")}
+                style={{ top: `${(layout === "fullscreen" ? titleTop(sc.text_position, vertical) / 100 : g.titleY) * 100}%`, left: g.left ? `${(g.textX ?? 0.07) * 100}%` : undefined,
+                  width: g.left ? `${(0.88 - (g.textX ?? 0.07)) * 100}%` : undefined, ...textStyle(sc.text_animation, local) }}>
+                {sc.title && (() => {
+                  const pm = g.badge ? sc.title.match(PRICE) : null;
+                  const rest = pm ? (sc.title.slice(0, pm.index) + sc.title.slice((pm.index ?? 0) + pm[0].length)).replace(/^[\s\-–:,]+|[\s\-–:,]+$/g, "") : sc.title;
+                  return rest ? <TitleView text={rest.charAt(0).toUpperCase() + rest.slice(1)} role={g.badge ? "content" : sc.role} style={s.style} font={titleFont} m={m} pal={pal} local={local} /> : null;
+                })()}
+                {sc.subtitle && <p className={clsx("font-semibold", ["moderno", "profissional", "tecnologico"].includes(s.style) && "rounded bg-black/45 px-[0.5em] py-[0.15em]")} style={{ fontSize: m * 0.052, color: ["moderno", "profissional", "tecnologico"].includes(s.style) ? pal[3] : pal[2], textShadow: "0 2px 6px rgba(0,0,0,.7)" }}>{sc.subtitle}</p>}
+              </div>
+            );
+            if (productLayout && g.box) {
+              const [cx, cy, bw, bh] = g.box;
+              const e = layout === "price" ? 1 : backOut(t / 0.75);
+              const slide = layout === "price" ? (1 - ease(Math.min(t / 0.7, 1))) * 60 : 0;
+              const rise = layout === "cta" ? (1 - ease(Math.min(t / 0.7, 1))) * 25 : 0;
+              const bullets = sc.bullets.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 4);
+              return (
+                <div key={sc.id} className="absolute inset-0 overflow-hidden" style={{ opacity, background: studio }}>
+                  <div className="absolute" style={{ left: `${(cx - bw / 2) * 100}%`, top: `${(cy - bh / 2) * 100}%`, width: `${bw * 100}%`, height: `${bh * 100}%`,
+                    transform: `translate(${slide}%, ${rise + Math.sin(t * 1.6) * 0.6}%) scale(${(0.72 + 0.28 * e) * (1 + 0.05 * ease(p))})`, opacity: Math.min(t / 0.35, 1) }}>
+                    <img src={productUrl!} alt="" className="size-full object-contain" style={{ filter: "drop-shadow(0 18px 18px rgba(0,0,0,.45))" }} />
+                  </div>
+                  {titleBlock}
+                  {g.badge && sc.title && PRICE.test(sc.title) && local > 0 && (
+                    <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${g.badge[0] * 100}%`, top: `${g.badge[1] * 100}%` }}><Badge text={sc.title.match(PRICE)![0]} m={m} pal={pal} local={local} /></div>
+                  )}
+                  {g.bulletsY && bullets.length > 0 && (
+                    <div className={clsx("absolute flex flex-col gap-[1.2em]", g.left ? "" : "left-1/2 -translate-x-1/2")} style={{ top: `${g.bulletsY * 100}%`, left: g.left ? `${(g.textX ?? 0.5) * 100}%` : undefined }}>
+                      {bullets.map((b, k) => {
+                        const bl = local - 0.5 - 0.28 * k;
+                        return (
+                          <div key={k} className="flex items-center gap-[0.6em]" style={{ opacity: Math.min(Math.max(bl / 0.25, 0), 1), transform: `translateX(${(1 - ease(Math.min(Math.max(bl / 0.38, 0), 1))) * 20}%)` }}>
+                            <span className="shrink-0 rounded-full" style={{ width: m * 0.04, height: m * 0.04, background: pal[2] }} />
+                            <span className="whitespace-nowrap bg-black/45 px-[0.4em] py-[0.15em] font-semibold" style={{ fontSize: m * 0.058, color: pal[3] }}>{b}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            if (layout === "gallery") {
+              const imgs = project.scenes.map((x) => x.image).filter((a): a is NonNullable<typeof a> => !!a && a.meta?.engine !== "procedural").slice(0, 4);
+              return (
+                <div key={sc.id} className="absolute inset-0" style={{ opacity, background: studio }}>
+                  <div className={clsx("absolute inset-x-[7%] grid gap-[3%]", vertical ? "top-[22%] h-[58%] grid-cols-2" : "top-[24%] h-[60%] grid-flow-col")}>
+                    {imgs.map((a, j) => {
+                      const lt = t - 0.18 * j;
+                      const e = backOut(lt / 0.6);
+                      return <img key={a.id} src={a.url} alt="" className="size-full rounded-[6%] object-cover shadow-2xl" style={{ opacity: lt > 0 ? Math.min(lt / 0.25, 1) : 0, transform: `scale(${0.6 + 0.4 * e}) rotate(${(j % 2 ? 1 : -1) * 3 * (1 - ease(Math.min(lt / 1.2, 1)) * 0.7)}deg)` }} />;
+                    })}
+                  </div>
+                  {titleBlock}
+                </div>
+              );
+            }
+            if (layout === "kinetic") {
+              return (
+                <div key={sc.id} className="absolute inset-0" style={{ opacity }}>
+                  {bg ? <img src={bg} alt="" className="absolute inset-0 size-full object-cover" style={{ transform: `scale(${1 + 0.06 * ease(p)})` }} /> : <div className="absolute inset-0" style={{ background: studio }} />}
+                  <div className="absolute inset-x-0 top-[42%] -translate-y-1/2">{local > 0 && <Kinetic text={sc.title || sc.subtitle} m={m} w={size.w} pal={pal} font={titleFont} local={local} />}</div>
+                  {sc.title && sc.subtitle && local > 0.6 && <p className="absolute inset-x-[8%] top-[72%] text-center font-semibold" style={{ fontSize: m * 0.052, color: pal[3] }}>{sc.subtitle}</p>}
+                </div>
+              );
+            }
             return (
               <div key={sc.id} className="absolute inset-0" style={{ opacity }}>
                 {bg ? (
@@ -223,12 +353,7 @@ export function Player({ project, timeline, onSelect, time, setTime }: {
                   ) : <img src={bg} alt="" className="absolute inset-0 size-full object-cover" style={{ transform: motionTransform(sc.motion, p) }} />
                 ) : <div className="absolute inset-0" style={{ background: `linear-gradient(160deg, ${pal[0]}, ${pal[1]})` }} />}
                 <div className="pointer-events-none absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,.35), transparent 30%, transparent 55%, rgba(0,0,0,.6))" }} />
-                {local > 0 && (sc.title || sc.subtitle) && (
-                  <div className="absolute inset-x-[8%] flex -translate-y-1/2 flex-col items-center gap-[0.6em] text-center" style={{ top: `${titleTop(sc.text_position, vertical)}%`, ...textStyle(sc.text_animation, local) }}>
-                    {sc.title && <TitleView text={sc.title} role={sc.role} style={s.style} font={titleFont} m={m} pal={pal} local={local} />}
-                    {sc.subtitle && <p className={clsx("font-semibold", ["moderno", "profissional", "tecnologico"].includes(s.style) && "rounded bg-black/45 px-[0.5em] py-[0.15em]")} style={{ fontSize: m * 0.052, color: ["moderno", "profissional", "tecnologico"].includes(s.style) ? pal[3] : pal[2], textShadow: "0 2px 6px rgba(0,0,0,.7)" }}>{sc.subtitle}</p>}
-                  </div>
-                )}
+                {titleBlock}
               </div>
             );
           })}

@@ -19,6 +19,10 @@ PIPER=https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/me
 fetch "$PIPER/pt_BR-faber-medium.onnx" "$MODELS/piper/pt_BR-faber-medium.onnx"
 fetch "$PIPER/pt_BR-faber-medium.onnx.json" "$MODELS/piper/pt_BR-faber-medium.onnx.json"
 
+# Recorte de produtos (remoção de fundo) — IS-Net (Apache-2.0), arquivo distribuído pelo projeto rembg (MIT)
+mkdir -p "$MODELS/rembg"
+fetch https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx "$MODELS/rembg/isnet-general-use.onnx"
+
 for arg in "$@"; do
   case "$arg" in
     --sdxl)

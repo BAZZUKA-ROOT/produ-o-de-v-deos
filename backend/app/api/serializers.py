@@ -28,7 +28,10 @@ def scene_out(s: Scene) -> dict:
         "id": str(s.id), "position": s.position, "role": s.role, "title": s.title, "subtitle": s.subtitle,
         "narration": s.narration, "caption_override": s.caption_override, "image_prompt": s.image_prompt,
         "duration": s.duration, "transition": s.transition, "motion": s.motion, "text_animation": s.text_animation,
-        "text_position": s.text_position, "fit": s.fit,
+        "text_position": s.text_position, "fit": s.fit, "layout": s.layout, "bullets": s.bullets,
+        "cutout_url": sign_media((s.image_asset.meta or {})["cutout_asset_id"])
+        if s.image_asset and (s.image_asset.meta or {}).get("cutout_asset_id") else None,
+        "cutout_usable": bool((s.image_asset.meta or {}).get("cutout_usable")) if s.image_asset else False,
         "image": asset_out(s.image_asset), "narration_audio": asset_out(s.narration_asset),
         "narration_duration": s.narration_duration,
     }

@@ -36,7 +36,8 @@ export interface ProjectSettings {
 export interface Scene {
   id: string; position: number; role: string; title: string; subtitle: string; narration: string; caption_override: string;
   image_prompt: string; duration: number; transition: string; motion: string; text_animation: string; text_position: string;
-  fit: string; image: Asset | null; narration_audio: Asset | null; narration_duration: number | null; narration_stale?: boolean;
+  fit: string; layout: string; bullets: string; cutout_url: string | null; cutout_usable: boolean; resolved_layout?: string;
+  image: Asset | null; narration_audio: Asset | null; narration_duration: number | null; narration_stale?: boolean;
 }
 
 export type ProjectStatus = "draft" | "scripting" | "ready" | "processing" | "completed" | "failed" | "cancelled";
@@ -65,7 +66,7 @@ export interface Template {
 export interface Options {
   formats: string[]; durations: number[]; qualities: string[]; styles: Record<string, string>; video_types: Record<string, string>;
   transitions: string[]; motions: string[]; text_animations: string[]; text_positions: string[]; fits: string[];
-  voices: Record<string, Record<string, string>>; music_moods: Record<string, string>; subtitle_styles: string[]; fonts: string[];
+  voices: Record<string, Record<string, string>>; music_moods: Record<string, string>; subtitle_styles: string[]; fonts: string[]; layouts: string[];
   style_presets: Record<string, { font: string; palette: string[]; music: string; transition: string; motion: string; animation: string }>;
 }
 

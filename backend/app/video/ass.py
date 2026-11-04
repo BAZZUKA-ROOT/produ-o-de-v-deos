@@ -57,6 +57,9 @@ class TextEvent:
     y: int
     animation: str = "fade"
     delay: float = 0.0
+    align: int = 5
+    margin_l: int = 0
+    margin_r: int = 0
 
 
 @dataclass
@@ -120,6 +123,7 @@ class AssDoc:
             f"Style: SubtitlePill,Montserrat SemiBold,{int(m * 0.05)},{white},{white},{ass_color('#000000', 0.45)},{shadow},0,0,0,0,100,100,0.5,0,3,{pad - 2},0,5,{ml},{ml},10,1",
             f"Style: Caption,Montserrat ExtraBold,{cap_size},{cap['primary']},{cap['secondary']},{cap['outline']},{cap['back']},"
             f"-1,0,0,0,100,100,0,0,{cap['border']},{cap['ol']},{cap['sh']},2,{ml},{ml},{int(self.h * 0.1)},1",
+            f"Style: Bullet,Montserrat SemiBold,{int(m * 0.058)},{white},{white},{ass_color('#000000', 0.45)},{shadow},0,0,0,0,100,100,0,0,3,{pad - 2},0,5,{ml},{ml},10,1",
             f"Style: Badge,Montserrat Black,{int(m * 0.1)},{box_text},{box_text},{accent},{shadow},-1,0,0,0,100,100,0,0,1,0,0,5,{ml},{ml},10,1",
             f"Style: Shape,Arial,20,{accent},{accent},{accent},{shadow},0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
             f"Style: EndName,{self.font},{int(m * 0.12)},{white},{white},{dark},{shadow},-1,0,0,0,100,100,1,0,1,{o + 1},{o + 2},5,{ml},{ml},10,1",
@@ -164,10 +168,10 @@ class AssDoc:
             return f"{{\\pos({x},{y}){extra}}}{text}"
         return f"{{\\pos({x},{y})\\fad(300,{out_ms}){extra}}}{text}"
 
-    def _lines(self, text: str, size: int) -> tuple[int, float]:
+    def _lines(self, text: str, size: int, max_w: float | None = None) -> tuple[int, float]:
         """Estimativa de quebra de linhas e largura (px) da maior linha."""
         per_char = size * (0.5 if self.font in UPPERCASE_FONTS else 0.58)
-        max_w = self.w * 0.84
+        max_w = max_w or self.w * 0.84
         words, lines, cur = text.split(), [], ""
         for wd in words:
             cand = f"{cur} {wd}".strip()
@@ -194,46 +198,69 @@ class AssDoc:
         start = ev.start + ev.delay
         if ev.end - start < 0.2 or not ev.text.strip():
             return
-        text = esc(ev.text.upper() if ev.style in ("Title", "TitleBox", "EndName") and self.font in UPPERCASE_FONTS else ev.text)
-        body = self._anim(ev.animation, ev.x, ev.y, int((ev.end - start) * 1000), text)
-        self.events.append(f"Dialogue: 1,{ts(start)},{ts(ev.end)},{ev.style},,0,0,0,,{body}")
+        text = esc(ev.text.upper() if ev.style in ("Title", "TitleBox", "EndName", "Kinetic") and self.font in UPPERCASE_FONTS else ev.text)
+        extra = f"\\an{ev.align}" if ev.align != 5 else ""
+        body = self._anim(ev.animation, ev.x, ev.y, int((ev.end - start) * 1000), text, extra)
+        self.events.append(f"Dialogue: 1,{ts(start)},{ts(ev.end)},{ev.style},,{ev.margin_l},{ev.margin_r},0,,{body}")
 
-    def add_title(self, start: float, end: float, text: str, x: int, y: int, anim: str, role: str = "") -> int:
+    def add_title(self, start: float, end: float, text: str, x: int, y: int, anim: str, role: str = "",
+                  align: str = "center", max_w: float | None = None, badge_at: tuple[int, int] | None = None) -> int:
         """Desenha o título com o tratamento do estilo; retorna a coordenada y abaixo do bloco."""
         if not text.strip() or end - start < 0.3:
             return y
-        if role == "offer" and PRICE_RE.search(text) and len(text) <= 28:
-            return self.add_badge(start, end, text, x, y)
+        pm = PRICE_RE.search(text)
+        if pm and (role == "offer" or badge_at):
+            bx, by = badge_at or (x, y)
+            price = pm.group(0).strip()
+            rest = (text[:pm.start()] + text[pm.end():]).strip(" -–:,")
+            self.add_badge(start, end, price, bx, by)
+            if not rest or not badge_at:
+                if rest and not badge_at:
+                    self.add_subtitle(start, end, rest, x, int(by + self.m * 0.3), "fade")
+                return y
+            text = rest[:1].upper() + rest[1:]
+        left = align == "left"
+        an, ml, mr = (4, int(x), int(self.w - x - (max_w or self.w * 0.45))) if left else (5, 0, 0)
         size = self.title_size
-        n_lines, width = self._lines(text.upper() if self.font in UPPERCASE_FONTS else text, size)
+        n_lines, width = self._lines(text.upper() if self.font in UPPERCASE_FONTS else text, size,
+                                     max_w if left else None)
+        if left:
+            x = int(x)
+
+        def ev(style: str, animation: str) -> TextEvent:
+            e = TextEvent(start, end, text, style, x, y, animation, align=an, margin_l=ml, margin_r=mr)
+            return e
         block_h = n_lines * size * 1.12
         accent = self.pal[2]
         st = self.title_style
         dur = end - start
         if st in ("box", "box_tilt"):
             extra = "\\frz2.5" if st == "box_tilt" else ""
-            self.add_text(TextEvent(start, end, text, "TitleBox", x, y, anim if anim != "typewriter" else "pop"))
+            self.add_text(ev("TitleBox", anim if anim != "typewriter" else "pop"))
             if extra:
                 self.events[-1] = self.events[-1].replace("}", extra + "}", 1)
             return int(y + block_h / 2 + self.m * 0.05)
         if st == "lines":
-            self.add_text(TextEvent(start, end, text, "Title", x, y, anim))
+            self.add_text(ev("Title", anim))
             lw = max(width * 0.5, self.m * 0.2)
+            lx = x if left else x - lw / 2
             for yy in (y - block_h / 2 - self.m * 0.04, y + block_h / 2 + self.m * 0.03):
-                self._rect(start + 0.2, end, x - lw / 2, yy, lw, max(2, self.m / 400), accent,
+                self._rect(start + 0.2, end, lx, yy, lw, max(2, self.m / 400), accent,
                            f"\\fad(300,200)\\org({x},{yy:.0f})\\fscx0\\t(200,800,\\fscx100)")
             return int(y + block_h / 2 + self.m * 0.07)
         if st == "glow":
-            glow = self._anim(anim, x, y, int(dur * 1000), esc(text), f"\\blur12\\bord6\\3c{_c(accent)}\\3a&H60&\\1a&HFF&")
-            self.events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Title,,0,0,0,,{glow}")
-            self.add_text(TextEvent(start, end, text, "Title", x, y, anim))
+            glow = self._anim(anim, x, y, int(dur * 1000), esc(text),
+                              f"\\an{an}\\blur12\\bord6\\3c{_c(accent)}\\3a&H60&\\1a&HFF&")
+            self.events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Title,,{ml},{mr},0,,{glow}")
+            self.add_text(ev("Title", anim))
             return int(y + block_h / 2 + self.m * 0.05)
         # "bar": título + barra de destaque que cresce
-        self.add_text(TextEvent(start, end, text, "Title", x, y, anim))
+        self.add_text(ev("Title", anim))
         bw, bh = self.m * 0.16, max(6, self.m * 0.014)
         by = y + block_h / 2 + self.m * 0.025
-        self._rect(start + 0.25, end, x - bw / 2, by, bw, bh, accent,
-                   f"\\fad(150,200)\\org({x},{by:.0f})\\fscx0\\t(250,700,\\fscx100)")
+        bx = x if left else x - bw / 2
+        self._rect(start + 0.25, end, bx, by, bw, bh, accent,
+                   f"\\fad(150,200)\\org({bx:.0f},{by:.0f})\\fscx0\\t(250,700,\\fscx100)")
         return int(by + bh + self.m * 0.04)
 
     def add_badge(self, start: float, end: float, text: str, x: int, y: int) -> int:
@@ -277,9 +304,74 @@ class AssDoc:
                 f"Dialogue: 0,{ts(start)},{ts(end)},Shape,,0,0,0,,{{\\an5\\move({x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f})"
                 f"\\c{_c(color)}\\1a&H{alpha}&\\bord0\\shad0\\blur{max(8, int(r / 2.5))}\\fad(500,500)\\p1}}{draw}{{\\p0}}")
 
-    def add_subtitle(self, start: float, end: float, text: str, x: int, y: int, anim: str) -> None:
+    def add_subtitle(self, start: float, end: float, text: str, x: int, y: int, anim: str, align: str = "center",
+                     max_w: float | None = None) -> None:
         style = "SubtitlePill" if self.title_style in ("bar", "glow") else "Subtitle"
-        self.add_text(TextEvent(start, end, text, style, x, y, "fade" if anim == "typewriter" else anim, delay=0.3))
+        left = align == "left"
+        self.add_text(TextEvent(start, end, text, style, x, y, "fade" if anim == "typewriter" else anim, delay=0.3,
+                                align=4 if left else 5, margin_l=int(x) if left else 0,
+                                margin_r=int(self.w - x - (max_w or self.w * 0.45)) if left else 0))
+
+    def add_bullets(self, start: float, end: float, items: list[str], x: int, y: int, align: str = "center",
+                    max_w: float | None = None) -> None:
+        """Lista de destaques em 'pílulas' com marcador, entrando em sequência (coluna alinhada à esquerda)."""
+        size = self.m * 0.058
+        r = self.m * 0.02
+        if align != "left":
+            widest = max((len(i) for i in items[:4]), default=0) * size * 0.56
+            x = int((self.w - widest) / 2 - r * 1.6)
+            max_w = self.w - x - self.w * 0.05
+        step = int(self.m * 0.115)
+        for k, item in enumerate(items[:4]):
+            yy = y + k * step
+            st = start + 0.5 + 0.28 * k
+            if end - st < 0.3:
+                break
+            cx = x + r
+            tx = int(x + r * 3.4)
+            pts = [f"{r + r * math.cos(2 * math.pi * i / 16):.0f} {r + r * math.sin(2 * math.pi * i / 16):.0f}"
+                   for i in range(16)]
+            draw = f"m {pts[0]} l " + " ".join(pts[1:])
+            self.events.append(
+                f"Dialogue: 2,{ts(st)},{ts(end)},Shape,,0,0,0,,{{\\an5\\pos({cx:.0f},{yy})\\c{_c(self.pal[2])}\\bord0"
+                f"\\shad0\\fad(120,200)\\fscx0\\fscy0\\t(0,250,\\fscx100\\fscy100)\\p1}}{draw}{{\\p0}}")
+            self.add_text(TextEvent(st, end, item, "Bullet", tx, yy, "slide_left", align=4, margin_l=tx,
+                                    margin_r=max(0, int(self.w - tx - (max_w or self.w * 0.45)))))
+
+    def add_kinetic(self, start: float, end: float, text: str, y: int) -> None:
+        """Tipografia cinética: palavras grandes, uma por linha, entrando alternadas com bloco de cor."""
+        words = text.replace("\\N", " ").split()
+        if not words:
+            return
+        lines: list[str] = []
+        for wd in words:
+            if lines and len(lines[-1]) + len(wd) < 9 and len(lines) >= 1 and len(wd) <= 4:
+                lines[-1] += " " + wd
+            else:
+                lines.append(wd)
+        while len(lines) > 5:
+            lines = [" ".join(lines[i:i + 2]) for i in range(0, len(lines), 2)]
+        upper = self.font in UPPERCASE_FONTS
+        longest = max(len(ln) for ln in lines)
+        size = int(min(self.m * (0.22 if upper else 0.17), self.w * 0.86 / max(longest * (0.5 if upper else 0.6), 1)))
+        step = int(size * 1.08)
+        y0 = int(y - step * (len(lines) - 1) / 2)
+        hl = len(lines) // 2 if len(lines) > 1 else -1
+        for k, ln in enumerate(lines):
+            yy = y0 + k * step
+            st = start + 0.12 * k
+            if k == hl:
+                bw = min(self.w * 0.92, len(ln) * size * (0.5 if upper else 0.6) + size * 0.6)
+                bx = (self.w - bw) / 2
+                self._rect(st, end, bx, yy - size * 0.58, bw, size * 1.12, self.pal[2],
+                           f"\\fad(0,200)\\org({bx:.0f},{yy})\\fscx0\\t(0,260,\\fscx100)", layer=1)
+            color = self.on_accent if k == hl else (self.pal[3] if k % 2 == 0 else self.pal[2])
+            dx = int(self.w * (0.25 if k % 2 == 0 else -0.25))
+            txt = esc(ln.upper() if upper else ln)
+            self.events.append(
+                f"Dialogue: 2,{ts(st + (0.12 if k == hl else 0))},{ts(end)},Title,,0,0,0,,"
+                f"{{\\fs{size}\\c{_c(color)}\\bord{0 if k == hl else max(2, self.m // 300)}\\shad{0 if k == hl else 3}"
+                f"\\move({self.w // 2 + dx},{yy},{self.w // 2},{yy},0,320)\\fad(120,200)}}{txt}")
 
     def add_caption(self, start: float, end: float, text: str) -> None:
         if end - start < 0.1:

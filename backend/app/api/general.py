@@ -10,6 +10,7 @@ from app.ai.music import MOODS
 from app.api.deps import get_current_user
 from app.api.serializers import asset_out, job_out, notification_out, project_summary, template_out
 from app.core import catalog
+from app.video.compose import LAYOUTS
 from app.core.db import get_db
 from app.models import (
     ACTIVE_JOB_STATUSES,
@@ -37,7 +38,7 @@ def options(_: User = Depends(get_current_user)):
         "text_positions": catalog.TEXT_POSITIONS, "fits": catalog.FITS, "voices": catalog.VOICES,
         "music_moods": {k: v for k, v in catalog.MUSIC_MOODS.items() if k in MOODS},
         "subtitle_styles": catalog.SUBTITLE_STYLES, "fonts": list(catalog.FONT_FILES),
-        "style_presets": catalog.STYLE_PRESETS,
+        "style_presets": catalog.STYLE_PRESETS, "layouts": LAYOUTS,
     }
 
 

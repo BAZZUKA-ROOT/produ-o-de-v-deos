@@ -134,7 +134,7 @@ export default function Editor() {
 
   const addScene = () => structural.mutate(() => api<Project>(`/projects/${id}/scenes`, { body: { position: idx >= 0 ? idx + 1 : project.scenes.length, title: "Nova cena", narration: "" } }));
   const duplicateScene = (s: Scene) => structural.mutate(() => api<Project>(`/projects/${id}/scenes`, {
-    body: { position: s.position + 1, role: s.role, title: s.title, subtitle: s.subtitle, narration: s.narration, caption_override: s.caption_override, image_prompt: s.image_prompt, duration: s.duration, transition: s.transition, motion: s.motion, text_animation: s.text_animation, text_position: s.text_position, fit: s.fit, image_asset_id: s.image?.id ?? null },
+    body: { position: s.position + 1, role: s.role, title: s.title, subtitle: s.subtitle, narration: s.narration, caption_override: s.caption_override, image_prompt: s.image_prompt, duration: s.duration, transition: s.transition, motion: s.motion, text_animation: s.text_animation, text_position: s.text_position, fit: s.fit, layout: s.layout, bullets: s.bullets, image_asset_id: s.image?.id ?? null },
   }));
   const reorder = (ids: string[]) => {
     setProject((p) => ({ ...p, scenes: ids.map((sid, i) => ({ ...p.scenes.find((s) => s.id === sid)!, position: i })) }));

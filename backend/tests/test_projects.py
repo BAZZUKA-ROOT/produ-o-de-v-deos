@@ -18,7 +18,7 @@ def _create(client, headers, **settings):
 
 def test_templates_catalog(client, user_headers):
     data = client.get("/api/templates", headers=user_headers).json()
-    assert len(data["categories"]) == 12
+    assert len(data["categories"]) == 13
     assert len(data["items"]) >= 36
 
 

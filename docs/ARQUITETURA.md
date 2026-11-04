@@ -28,7 +28,7 @@ models/       SQLAlchemy: User, Project, Scene, Asset, Template, Job, Notificati
 schemas/      validação Pydantic de entrada
 services/     storage (validação/sanitização de uploads), jobs (fila/progresso/cancelamento), pipeline, runtime_settings
 ai/llm        roteiro: Ollama com JSON Schema + fallback por templates
-ai/image      ComfyUI → Pexels → fundo procedural
+ai/image      ComfyUI → Pexels → fundo procedural; cutout.py (remoção de fundo do produto)
 ai/tts        Kokoro → Piper → eSpeak (cadeia de fallback)
 ai/music      trilhas procedurais originais (sem direitos autorais)
 video/        timeline (sincronia/ajuste de duração), frames, motion (OpenCV), ass (textos), renderer (FFmpeg)
@@ -41,7 +41,14 @@ seed/         templates por segmento
 2. **Narração** por cena (assinatura texto+voz+velocidade evita regerar áudio inalterado).
 3. **Timeline**: duração efetiva = máx(duração da cena, narração + margens); ajuste automático ao alvo
    (remove folgas → acelera narração até 1,2× → avisa se ainda exceder); legendas fatiadas e sincronizadas.
-4. **Cenas**: OpenCV gera movimento com interpolação subpixel e envia frames brutos ao FFmpeg (x264).
+4. **Cenas**: cada cena tem um layout (`auto` resolve por papel + foto disponível):
+   - `hero`, `price`, `features`, `cta`: produto recortado (IS-Net, cache como asset derivado) composto em camadas
+     (`video/compose.py`): fundo de estúdio com parallax, brilho, sombra de contato, reflexo, entrada animada,
+     flutuação e faixa de luz;
+   - `gallery`: cartões com as fotos do projeto entrando em sequência;
+   - `kinetic`: tipografia animada (palavras grandes + bloco de cor) para cenas sem foto;
+   - `fullscreen`: foto inteira com movimento de câmera (Ken Burns subpixel).
+   Frames brutos são enviados ao FFmpeg (x264).
 5. **Composição FFmpeg**: `xfade` entre cenas, gradiente de legibilidade, textos ASS animados (libass),
    marca d'água, narração com `adelay`, trilha em loop com `sidechaincompress` (ducking) e `loudnorm`.
 6. Saída MP4 H.264/AAC `+faststart`, miniatura, notificação ao usuário.
