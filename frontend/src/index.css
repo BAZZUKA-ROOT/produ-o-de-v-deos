@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0b0d12;
+  --color-surface: #11141b;
+  --color-surface-2: #171b24;
+  --color-surface-3: #1e2330;
+  --color-line: #252b3a;
+  --color-line-strong: #323a4d;
+  --color-fg: #e8eaf0;
+  --color-muted: #8b93a7;
+  --color-subtle: #5d6577;
+  --color-ember: #ff6b2c;
+  --color-ember-2: #ffb547;
+  --color-ember-dark: #c2410c;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+  --color-info: #60a5fa;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-xl: 14px;
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: color-mix(in srgb, var(--color-ember) 40%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: var(--color-line-strong) transparent; }
+input, textarea, select, button { font: inherit; }
+:focus-visible { outline: 2px solid var(--color-ember); outline-offset: 2px; }
+
+.ember-gradient { background-image: linear-gradient(135deg, var(--color-ember-2), var(--color-ember)); }
+.ember-text { background-image: linear-gradient(135deg, var(--color-ember-2), var(--color-ember)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.card { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-xl); }
+
+/* animações do player de pré-visualização */
+@keyframes kb-zoom_in { from { transform: scale(1) } to { transform: scale(1.18) } }
+@keyframes kb-zoom_out { from { transform: scale(1.18) } to { transform: scale(1) } }
+@keyframes kb-zoom_in_left { from { transform: scale(1) translateX(0) } to { transform: scale(1.18) translateX(-4%) } }
+@keyframes kb-zoom_in_right { from { transform: scale(1) translateX(0) } to { transform: scale(1.18) translateX(4%) } }
+@keyframes kb-pan_left { from { transform: scale(1.13) translateX(5%) } to { transform: scale(1.13) translateX(-5%) } }
+@keyframes kb-pan_right { from { transform: scale(1.13) translateX(-5%) } to { transform: scale(1.13) translateX(5%) } }
+@keyframes kb-pan_up { from { transform: scale(1.13) translateY(5%) } to { transform: scale(1.13) translateY(-5%) } }
+@keyframes kb-pan_down { from { transform: scale(1.13) translateY(-5%) } to { transform: scale(1.13) translateY(5%) } }
+@keyframes tx-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes tx-slide_up { from { opacity: 0; transform: translateY(30%) } to { opacity: 1; transform: none } }
+@keyframes tx-slide_left { from { opacity: 0; transform: translateX(25%) } to { opacity: 1; transform: none } }
+@keyframes tx-pop { 0% { opacity: 0; transform: scale(.4) } 60% { opacity: 1; transform: scale(1.12) } 100% { transform: scale(1) } }
+@keyframes tx-blur_in { from { opacity: 0; filter: blur(12px) } to { opacity: 1; filter: none } }
+@keyframes tx-typewriter { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
