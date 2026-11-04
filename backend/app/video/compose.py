@@ -53,6 +53,7 @@ class LayoutGeom:
     subtitle_gap: float = 0.03
     bullets_y: float | None = None
     badge: tuple[float, float] | None = None
+    text_w: float = 0.36
 
 
 def geometry(layout: str, w: int, h: int) -> LayoutGeom:
@@ -60,26 +61,26 @@ def geometry(layout: str, w: int, h: int) -> LayoutGeom:
     square = not vertical and w < h * 1.15
     if layout == "hero":
         if vertical:
-            return LayoutGeom(Box(0.5, 0.53, 0.84, 0.44), title_y=0.15)
+            return LayoutGeom(Box(0.5, 0.54, 0.9, 0.54), title_y=0.15)
         if square:
             return LayoutGeom(Box(0.5, 0.58, 0.7, 0.58), title_y=0.13)
-        return LayoutGeom(Box(0.68, 0.53, 0.5, 0.74), title_y=0.42, title_align="left", text_x=0.07)
+        return LayoutGeom(Box(0.68, 0.53, 0.5, 0.74), title_y=0.42, title_align="left", text_x=0.07, text_w=0.36)
     if layout == "price":
         if vertical:
             return LayoutGeom(Box(0.46, 0.45, 0.78, 0.38), title_y=0.13, badge=(0.7, 0.63))
         if square:
             return LayoutGeom(Box(0.4, 0.55, 0.62, 0.62), title_y=0.12, badge=(0.75, 0.62))
-        return LayoutGeom(Box(0.33, 0.55, 0.45, 0.75), title_y=0.3, title_align="left", text_x=0.6, badge=(0.75, 0.62))
+        return LayoutGeom(Box(0.33, 0.55, 0.45, 0.75), title_y=0.3, title_align="left", text_x=0.6, badge=(0.75, 0.62), text_w=0.33)
     if layout == "features":
         if vertical:
-            return LayoutGeom(Box(0.5, 0.4, 0.7, 0.3), title_y=0.12, bullets_y=0.63)
+            return LayoutGeom(Box(0.5, 0.41, 0.86, 0.42), title_y=0.12, bullets_y=0.67)
         if square:
-            return LayoutGeom(Box(0.3, 0.55, 0.48, 0.62), title_y=0.12, title_align="left", text_x=0.56, bullets_y=0.42)
-        return LayoutGeom(Box(0.3, 0.53, 0.45, 0.78), title_y=0.25, title_align="left", text_x=0.58, bullets_y=0.45)
+            return LayoutGeom(Box(0.3, 0.55, 0.48, 0.62), title_y=0.12, title_align="left", text_x=0.56, bullets_y=0.42, text_w=0.4)
+        return LayoutGeom(Box(0.3, 0.53, 0.45, 0.78), title_y=0.25, title_align="left", text_x=0.58, bullets_y=0.45, text_w=0.36)
     if layout == "cta":
         if vertical:
             return LayoutGeom(Box(0.5, 0.3, 0.62, 0.3), title_y=0.58)
-        return LayoutGeom(Box(0.3, 0.52, 0.42, 0.66), title_y=0.42, title_align="left", text_x=0.56)
+        return LayoutGeom(Box(0.3, 0.52, 0.42, 0.66), title_y=0.42, title_align="left", text_x=0.56, text_w=0.38)
     if layout == "kinetic":
         return LayoutGeom(None, title_y=0.45)
     if layout == "gallery":

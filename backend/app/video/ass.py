@@ -321,7 +321,7 @@ class AssDoc:
             widest = max((len(i) for i in items[:4]), default=0) * size * 0.56
             x = int((self.w - widest) / 2 - r * 1.6)
             max_w = self.w - x - self.w * 0.05
-        step = int(self.m * 0.115)
+        step = int(self.m * 0.105)
         for k, item in enumerate(items[:4]):
             yy = y + k * step
             st = start + 0.5 + 0.28 * k

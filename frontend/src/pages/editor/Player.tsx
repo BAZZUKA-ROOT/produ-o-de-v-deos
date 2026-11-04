@@ -78,9 +78,9 @@ function geometry(layout: string, w: number, h: number): Geo {
   const vertical = h > w * 1.15;
   const square = !vertical && w < h * 1.15;
   switch (layout) {
-    case "hero": return vertical ? { box: [0.5, 0.53, 0.84, 0.44], titleY: 0.15 } : square ? { box: [0.5, 0.58, 0.7, 0.58], titleY: 0.13 } : { box: [0.68, 0.53, 0.5, 0.74], titleY: 0.42, left: true, textX: 0.07 };
+    case "hero": return vertical ? { box: [0.5, 0.54, 0.9, 0.54], titleY: 0.15 } : square ? { box: [0.5, 0.58, 0.7, 0.58], titleY: 0.13 } : { box: [0.68, 0.53, 0.5, 0.74], titleY: 0.42, left: true, textX: 0.07 };
     case "price": return vertical ? { box: [0.46, 0.45, 0.78, 0.38], titleY: 0.13, badge: [0.7, 0.63] } : square ? { box: [0.4, 0.55, 0.62, 0.62], titleY: 0.12, badge: [0.75, 0.62] } : { box: [0.33, 0.55, 0.45, 0.75], titleY: 0.3, left: true, textX: 0.6, badge: [0.75, 0.62] };
-    case "features": return vertical ? { box: [0.5, 0.4, 0.7, 0.3], titleY: 0.12, bulletsY: 0.63 } : square ? { box: [0.3, 0.55, 0.48, 0.62], titleY: 0.12, left: true, textX: 0.56, bulletsY: 0.42 } : { box: [0.3, 0.53, 0.45, 0.78], titleY: 0.25, left: true, textX: 0.58, bulletsY: 0.45 };
+    case "features": return vertical ? { box: [0.5, 0.41, 0.86, 0.42], titleY: 0.12, bulletsY: 0.67 } : square ? { box: [0.3, 0.55, 0.48, 0.62], titleY: 0.12, left: true, textX: 0.56, bulletsY: 0.42 } : { box: [0.3, 0.53, 0.45, 0.78], titleY: 0.25, left: true, textX: 0.58, bulletsY: 0.45 };
     case "cta": return vertical ? { box: [0.5, 0.3, 0.62, 0.3], titleY: 0.58 } : { box: [0.3, 0.52, 0.42, 0.66], titleY: 0.42, left: true, textX: 0.56 };
     case "gallery": return { titleY: vertical ? 0.13 : 0.12 };
     case "kinetic": return { titleY: 0.45 };
@@ -277,7 +277,7 @@ export function Player({ project, timeline, onSelect, time, setTime }: {
             const titleBlock = (sc.title || sc.subtitle) && local > 0 && (
               <div className={clsx("absolute flex -translate-y-1/2 flex-col gap-[0.6em]", g.left ? "items-start text-left" : "inset-x-[8%] items-center text-center")}
                 style={{ top: `${(layout === "fullscreen" ? titleTop(sc.text_position, vertical) / 100 : g.titleY) * 100}%`, left: g.left ? `${(g.textX ?? 0.07) * 100}%` : undefined,
-                  width: g.left ? `${(0.88 - (g.textX ?? 0.07)) * 100}%` : undefined, ...textStyle(sc.text_animation, local) }}>
+                  width: g.left ? `${((g.textX ?? 0) < 0.5 ? 0.36 : 0.88 - (g.textX ?? 0.5)) * 100}%` : undefined, ...textStyle(sc.text_animation, local) }}>
                 {sc.title && (() => {
                   const pm = g.badge ? sc.title.match(PRICE) : null;
                   const rest = pm ? (sc.title.slice(0, pm.index) + sc.title.slice((pm.index ?? 0) + pm[0].length)).replace(/^[\s\-–:,]+|[\s\-–:,]+$/g, "") : sc.title;

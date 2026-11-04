@@ -64,16 +64,32 @@ def end_card_image(path: Path, w: int, h: int, palette: list[str], logo_path: Pa
     if logo_path and logo_path.exists():
         with Image.open(logo_path) as lg:
             lg = lg.convert("RGBA")
-            box = int(min(w, h) * 0.34)
+            transparent = lg.getextrema()[3][0] < 200
+            box = int(min(w, h) * (0.5 if transparent else 0.34))
             lg.thumbnail((box, box), Image.Resampling.LANCZOS)
-            pad = int(box * 0.12)
-            card = Image.new("RGBA", (lg.width + pad * 2, lg.height + pad * 2), (255, 255, 255, 235))
-            mask = Image.new("L", card.size, 0)
-            ImageDraw.Draw(mask).rounded_rectangle([0, 0, card.width - 1, card.height - 1], radius=pad, fill=255)
-            card.alpha_composite(lg, (pad, pad))
-            x = (w - card.width) // 2
-            y = int(h * 0.12) if h > w else int(h * 0.08)
-            base.paste(card, (x, y), mask)
-            text_y = (y + card.height) / h + 0.08
+            y = int(h * 0.1) if h > w else int(h * 0.07)
+            if transparent:
+                # logo com transparência: aplica brilho por trás em vez de cartão branco
+                glow = Image.new("RGBA", (lg.width + box, lg.height + box), (0, 0, 0, 0))
+                a = lg.split()[3].point(lambda v: int(v * 0.55))
+                tint = Image.new("RGBA", lg.size, (255, 220, 120, 255))
+                tint.putalpha(a)
+                glow.alpha_composite(tint, (box // 2, box // 2))
+                glow = glow.filter(ImageFilter.GaussianBlur(box // 10))
+                x = (w - lg.width) // 2
+                rgba = base.convert("RGBA")
+                rgba.alpha_composite(glow, (x - box // 2, y - box // 2))
+                rgba.alpha_composite(lg, (x, y))
+                base = rgba.convert("RGB")
+                text_y = (y + lg.height) / h + 0.07
+            else:
+                pad = int(box * 0.12)
+                card = Image.new("RGBA", (lg.width + pad * 2, lg.height + pad * 2), (255, 255, 255, 235))
+                mask = Image.new("L", card.size, 0)
+                ImageDraw.Draw(mask).rounded_rectangle([0, 0, card.width - 1, card.height - 1], radius=pad, fill=255)
+                card.alpha_composite(lg, (pad, pad))
+                x = (w - card.width) // 2
+                base.paste(card, (x, y), mask)
+                text_y = (y + card.height) / h + 0.08
     base.save(path, "JPEG", quality=92)
     return path, min(text_y, 0.6)

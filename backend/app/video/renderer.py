@@ -208,7 +208,7 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
             g = compose.geometry(sp.layout, w, h)
             align = g.title_align
             tx = int(w * g.text_x)
-            max_w = w * (0.9 - g.text_x) if align == "left" else None
+            max_w = w * g.text_w if align == "left" else None
             ty = int(h * g.title_y)
             positions.add("top" if g.title_y < 0.3 else "center")
             badge = None

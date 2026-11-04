@@ -60,7 +60,7 @@ def trans_duration(name: str) -> float:
     return CUT_DURATION if name in ("none", "", None) else TRANSITION_DURATION
 
 
-def split_captions(text: str, max_words: int = 5, max_chars: int = 30) -> list[str]:
+def split_captions(text: str, max_words: int = 4, max_chars: int = 24) -> list[str]:
     # mantém telefones como "(11) 98765-4321" em um único bloco
     text = re.sub(r"(\(\d{2}\))\s+(?=\d)", "\\1\u00a0", re.sub(r"\s+", " ", text).strip())
     words = text.split(" ")
