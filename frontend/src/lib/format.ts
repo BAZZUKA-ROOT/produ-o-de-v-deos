@@ -43,6 +43,7 @@ export const LABELS: Record<string, string> = {
   social_proof: "Prova social", content: "Conteúdo", cta: "Chamada (CTA)",
   auto: "Automático", fullscreen: "Tela cheia (foto)", hero: "Produto em destaque", price: "Produto + preço",
   features: "Produto + destaques", gallery: "Galeria de fotos", kinetic: "Tipografia animada",
+  phone: "Mockup de celular (print)", laptop: "Mockup de notebook (print)",
   female: "Feminina", male: "Masculina", kokoro: "Kokoro (natural)", piper: "Piper", espeak: "eSpeak (leve)",
 };
 export const label = (k: string) => LABELS[k] ?? k;

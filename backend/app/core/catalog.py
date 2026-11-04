@@ -111,4 +111,6 @@ def default_project_settings(style: str = "moderno") -> dict:
         "logo_asset_id": None,
         "photo_asset_ids": [],
         "fit_duration": True,
+        "sfx_enabled": True,
+        "stage_effects": True,
     }

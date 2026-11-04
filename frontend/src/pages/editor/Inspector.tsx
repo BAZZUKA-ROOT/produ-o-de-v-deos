@@ -39,7 +39,9 @@ export function SceneInspector({ scene, index, opts, onChange, onDelete, onDupli
       </Field>
       <Field label="Prompt da imagem (inglês funciona melhor)"><Textarea rows={2} value={scene.image_prompt} onChange={(e) => onChange({ image_prompt: e.target.value })} /></Field>
 
-      <Field label="Texto na tela"><Input value={scene.title} onChange={(e) => onChange({ title: e.target.value })} /></Field>
+      <Field label="Texto na tela" hint="Use *palavra* para destacar na cor de destaque">
+        <Input value={scene.title} onChange={(e) => onChange({ title: e.target.value })} />
+      </Field>
       <Field label="Subtítulo"><Input value={scene.subtitle} onChange={(e) => onChange({ subtitle: e.target.value })} /></Field>
       <Field label="Narração">
         <Textarea rows={3} value={scene.narration} onChange={(e) => onChange({ narration: e.target.value })} />

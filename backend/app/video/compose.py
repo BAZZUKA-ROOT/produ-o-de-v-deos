@@ -15,9 +15,10 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 
+from app.video import fx
 from app.video.motion import Cancelled
 
-LAYOUTS = ["auto", "fullscreen", "hero", "price", "features", "cta", "gallery", "kinetic"]
+LAYOUTS = ["auto", "fullscreen", "hero", "price", "features", "cta", "gallery", "kinetic", "phone", "laptop"]
 
 
 def _hex(c: str) -> np.ndarray:
@@ -73,7 +74,7 @@ def geometry(layout: str, w: int, h: int) -> LayoutGeom:
         return LayoutGeom(Box(0.33, 0.55, 0.45, 0.75), title_y=0.3, title_align="left", text_x=0.6, badge=(0.75, 0.62), text_w=0.33)
     if layout == "features":
         if vertical:
-            return LayoutGeom(Box(0.5, 0.41, 0.86, 0.42), title_y=0.12, bullets_y=0.67)
+            return LayoutGeom(Box(0.5, 0.42, 0.86, 0.46), title_y=0.12, bullets_y=0.705)
         if square:
             return LayoutGeom(Box(0.3, 0.55, 0.48, 0.62), title_y=0.12, title_align="left", text_x=0.56, bullets_y=0.42, text_w=0.4)
         return LayoutGeom(Box(0.3, 0.53, 0.45, 0.78), title_y=0.25, title_align="left", text_x=0.58, bullets_y=0.45, text_w=0.36)
@@ -149,134 +150,116 @@ class SceneSpec:
     palette: list[str]
     product: Path | None = None          # PNG com transparência
     photos: list[Path] = field(default_factory=list)
-    entry: str = "pop"                   # pop | slide_left | slide_up
+    entry: str = "pop"                   # pop | swing | rise | slide_left
+    seed: int = 1
+    stage: bool = True                   # palco animado (feixes, grade, partículas)
+
+
+def _stage(spec: SceneSpec, w: int, h: int, focus: tuple[float, float], floor_y: float | None):
+    base = studio_background(w, h, spec.palette, focus, floor_y=floor_y)
+    base = cv2.convertScaleAbs(base, alpha=0.62)  # palco escuro: contraste para luzes e objeto
+    return fx.Stage(w, h, spec.palette, base, seed=spec.seed, beams=spec.stage, grid=spec.stage and floor_y is not None,
+                    particles=spec.stage, floor_y=floor_y or 0.75)
+
+
+def _entry_pose(entry: str, t: float, w: int, h: int) -> tuple[float, float, float, float, float, float]:
+    """(escala, dx, dy, yaw, pitch, opacidade) da animação de entrada."""
+    p = t / 0.85
+    op = min(t / 0.3, 1.0)
+    if entry == "swing":
+        e = fx.ease_out_cubic(p)
+        return 0.85 + 0.15 * e, (1 - e) * w * 0.25, 0.0, (1 - e) * 1.0, (1 - e) * -0.15, op
+    if entry == "rise":
+        e = fx.ease_out_cubic(p)
+        return 0.9 + 0.1 * e, 0.0, (1 - e) * h * 0.3, 0.0, (1 - e) * 0.55, op
+    if entry == "slide_left":
+        e = fx.ease_out_cubic(p)
+        return 1.0, (1 - e) * -w * 0.7, 0.0, (1 - e) * -0.6, 0.0, op
+    e = fx.ease_out_back(p)
+    return 0.6 + 0.4 * e, 0.0, 0.0, 0.0, 0.0, op
 
 
 def _product_frames(spec: SceneSpec, w: int, h: int, fps: int):
     g = geometry(spec.layout, w, h)
     box = g.product
     assert box is not None and spec.product is not None
-    bg = studio_background(w, h, spec.palette, (box.cx, box.cy), floor_y=min(box.cy + box.bh / 2, 0.92))
+    floor = min(box.cy + box.bh / 2 + 0.02, 0.93)
+    stage = _stage(spec, w, h, (box.cx, box.cy), floor)
+    accent = fx.hex_bgr(spec.palette[2])
     prod = load_rgba(spec.product, int(max(w, h) * 0.9))
-    base_scale = _fit(prod, box.bw * w, box.bh * h)
     ph, pw = prod.shape[:2]
-    # sombra de contato (elipse desfocada)
-    sh_w, sh_h = int(pw * base_scale * 0.85), max(8, int(ph * base_scale * 0.08))
-    shadow = np.zeros((sh_h * 3, sh_w + sh_h * 2), np.float32)
-    cv2.ellipse(shadow, (shadow.shape[1] // 2, shadow.shape[0] // 2), (sh_w // 2, sh_h // 2), 0, 0, 360, 1.0, -1)
-    shadow = cv2.GaussianBlur(shadow, (0, 0), sh_h * 0.6) * 0.55
-    black = np.zeros((*shadow.shape, 3), np.uint8)
+    base_scale = _fit(prod, box.bw * w, box.bh * h) * 0.94
     n = max(1, int(round(spec.duration * fps)))
     for i in range(n):
         t = i / fps
-        frame = bg.copy()
-        # parallax: fundo aproxima devagar
-        z = 1 + 0.04 * (t / max(spec.duration, 0.1))
-        if z > 1.001:
-            m = cv2.getRotationMatrix2D((w * box.cx, h * box.cy), 0, z)
-            frame = cv2.warpAffine(frame, m, (w, h), borderMode=cv2.BORDER_REFLECT)
-        enter = _ease_out_back(t / 0.75)
-        alpha_in = min(t / 0.35, 1.0)
-        scale = base_scale * (0.72 + 0.28 * enter if spec.entry == "pop" else 1.0) * (1 + 0.05 * _ease(t / spec.duration))
-        float_y = math.sin(t * 1.6) * h * 0.006
-        dx = 0.0
-        if spec.entry == "slide_left":
-            dx = (1 - _ease(t / 0.7)) * w * 0.6
-        dy = (1 - _ease(t / 0.7)) * h * 0.25 if spec.entry == "slide_up" else 0.0
-        sw_, sh_ = max(2, int(pw * scale)), max(2, int(ph * scale))
-        p = cv2.resize(prod, (sw_, sh_), interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR)
-        cx, cy = w * box.cx + dx, h * box.cy + float_y + dy
-        x, y = int(cx - sw_ / 2), int(cy - sh_ / 2)
-        floor = int(h * box.cy + base_scale * ph / 2)
-        # sombra
-        _blend(frame, black, shadow * alpha_in * (1 - 0.3 * (float_y / (h * 0.006) + 1) / 2),
-               int(cx - shadow.shape[1] / 2), int(floor - shadow.shape[0] / 2))
-        a = p[..., 3].astype(np.float32) / 255 * alpha_in
-        rgb = p[..., :3]
-        # reflexo
-        refl_h = int(sh_ * 0.35)
-        if refl_h > 4 and floor + refl_h < h + refl_h:
-            r_rgb = rgb[::-1][:refl_h]
-            r_a = a[::-1][:refl_h] * np.linspace(0.22, 0, refl_h, dtype=np.float32)[:, None]
-            _blend(frame, r_rgb, r_a, x, floor + 2)
-        # faixa de luz passando (uma vez, após a entrada)
-        sweep_t = (t - 0.9) / 1.0
-        if 0 <= sweep_t <= 1:
-            yy, xx = np.mgrid[0:sh_, 0:sw_].astype(np.float32)
-            pos = (xx / sw_ + yy / sh_ * 0.5) - (sweep_t * 1.9 - 0.4)
-            band = np.exp(-(pos ** 2) / 0.006)[..., None] * 0.45
-            rgb = np.clip(rgb.astype(np.float32) + band * 255 * (a[..., None] > 0.1), 0, 255).astype(np.uint8)
-        _blend(frame, rgb, a, x, y)
+        frame = stage.frame(t, zoom=1 + 0.05 * fx.ease(t / max(spec.duration, 0.1)), focus=(box.cx, box.cy))
+        sc, dx, dy, yaw0, pitch0, op = _entry_pose(spec.entry, t, w, h)
+        yaw = yaw0 + 0.13 * math.sin(t * 0.55 + spec.seed)
+        pitch = pitch0 + 0.05 * math.sin(t * 0.4 + 1.3)
+        fy = math.sin(t * 1.5) * h * 0.006
+        scale = base_scale * sc * (1 + 0.04 * fx.ease(t / spec.duration))
+        quad = fx.project_quad(pw, ph, scale, w * box.cx + dx, h * box.cy + dy + fy, yaw, pitch,
+                               focal=max(w, h) * 1.4)
+        sweep = (t - 1.0) / 1.1
+        fx.draw_object(frame, prod, quad, accent, op, floor_y=int(h * floor), sweep=sweep)
         yield frame
+
+
+def _rounded_card(img: np.ndarray, radius: int) -> np.ndarray:
+    hh, ww = img.shape[:2]
+    mask = np.zeros((hh, ww), np.uint8)
+    cv2.rectangle(mask, (radius, 0), (ww - radius, hh), 255, -1)
+    cv2.rectangle(mask, (0, radius), (ww, hh - radius), 255, -1)
+    for cxy in ((radius, radius), (ww - radius, radius), (radius, hh - radius), (ww - radius, hh - radius)):
+        cv2.circle(mask, cxy, radius, 255, -1, cv2.LINE_AA)
+    # borda clara fina (acabamento de vidro)
+    rgba = np.dstack([img, mask])
+    cv2.rectangle(rgba, (1, 1), (ww - 2, hh - 2), (255, 255, 255, 0), 0)
+    return rgba
 
 
 def _gallery_frames(spec: SceneSpec, w: int, h: int, fps: int):
     vertical = h > w * 1.15
-    bg = studio_background(w, h, spec.palette, (0.5, 0.55), floor_y=None)
+    stage = _stage(spec, w, h, (0.5, 0.5), 0.86 if vertical else 0.88)
+    accent = fx.hex_bgr(spec.palette[2])
     photos = spec.photos[:4]
     k = len(photos)
-    if vertical:
-        cols, rows = (2, 2) if k >= 3 else (1, k)
-    else:
-        cols, rows = (k, 1)
+    cols, rows = ((2, 2) if k >= 3 else (1, k)) if vertical else (k, 1)
     area_top, area_h = (0.22, 0.58) if vertical else (0.24, 0.6)
     cw, ch = w * 0.86 / cols, h * area_h / rows
     cards = []
     for idx, ph in enumerate(photos):
         with Image.open(ph) as im:
             im = ImageOps.exif_transpose(im).convert("RGB")
-            card_w, card_h = int(cw * 0.9), int(ch * 0.9)
+            card_w, card_h = int(cw * 0.88), int(ch * 0.88)
             im = ImageOps.fit(im, (card_w, card_h), Image.Resampling.LANCZOS)
             arr = np.asarray(im)[..., ::-1].copy()
-        r = int(min(card_w, card_h) * 0.06)
-        mask = np.zeros((card_h, card_w), np.float32)
-        cv2.rectangle(mask, (r, 0), (card_w - r, card_h), 1.0, -1)
-        cv2.rectangle(mask, (0, r), (card_w, card_h - r), 1.0, -1)
-        for cxy in ((r, r), (card_w - r, r), (r, card_h - r), (card_w - r, card_h - r)):
-            cv2.circle(mask, cxy, r, 1.0, -1)
-        col, row = idx % cols, idx // cols
-        cx = w * 0.07 + cw * (col + 0.5)
-        cy = h * area_top + ch * (row + 0.5)
-        cards.append((arr, mask, cx, cy, (idx % 2 * 2 - 1) * 3.0))
+        cards.append((_rounded_card(arr, int(min(card_w, card_h) * 0.06)),
+                      w * 0.07 + cw * (idx % cols + 0.5), h * area_top + ch * (idx // cols + 0.5)))
     n = max(1, int(round(spec.duration * fps)))
     for i in range(n):
         t = i / fps
-        frame = bg.copy()
-        for j, (arr, mask, cx, cy, rot) in enumerate(cards):
-            lt = t - 0.18 * j
+        frame = stage.frame(t, zoom=1 + 0.04 * fx.ease(t / spec.duration))
+        for j, (card, cx, cy) in enumerate(cards):
+            lt = t - 0.16 * j
             if lt <= 0:
                 continue
-            e = _ease_out_back(lt / 0.6)
-            s = 0.6 + 0.4 * e
-            drift = math.sin(t * 1.2 + j) * 0.004 * h
-            hh, ww = mask.shape
-            m = cv2.getRotationMatrix2D((ww / 2, hh / 2), rot * (1 - _ease(lt / 1.2)) + rot * 0.3, s)
-            pad = int(max(ww, hh) * 0.15)
-            m[0, 2] += pad
-            m[1, 2] += pad
-            size = (ww + pad * 2, hh + pad * 2)
-            a = cv2.warpAffine(mask, m, size) * min(lt / 0.25, 1)
-            img = cv2.warpAffine(arr, m, size)
-            shadow = cv2.GaussianBlur(a, (0, 0), max(4, ww * 0.03)) * 0.5
-            x, y = int(cx - size[0] / 2), int(cy - size[1] / 2 + drift)
-            _blend(frame, np.zeros_like(img), shadow, x + int(ww * 0.02), y + int(hh * 0.03))
-            _blend(frame, img, a, x, y)
+            e = fx.ease_out_back(lt / 0.7, 1.2)
+            yaw = (1 - fx.ease_out_cubic(lt / 0.8)) * (0.9 if j % 2 else -0.9) + 0.08 * math.sin(t * 0.7 + j)
+            pitch = 0.05 * math.sin(t * 0.5 + j * 1.3)
+            q = fx.project_quad(card.shape[1], card.shape[0], 0.7 + 0.3 * e, cx, cy + math.sin(t * 1.1 + j) * h * 0.004,
+                                yaw, pitch, roll=(1 - fx.ease(lt / 1.0)) * (0.12 if j % 2 else -0.12),
+                                focal=max(w, h) * 1.3)
+            fx.draw_object(frame, card, q, accent, min(lt / 0.25, 1.0), floor_y=None, rim=0.35, shadow=0.6)
         yield frame
 
 
 def _kinetic_frames(spec: SceneSpec, w: int, h: int, fps: int, bg_image: Path | None):
-    if bg_image is not None:
-        with Image.open(bg_image) as im:
-            base = ImageOps.fit(im.convert("RGB"), (w, h), Image.Resampling.LANCZOS)
-            bg = np.asarray(base)[..., ::-1].copy()
-    else:
-        bg = studio_background(w, h, spec.palette, (0.5, 0.45), floor_y=None)
+    stage = _stage(spec, w, h, (0.5, 0.42), 0.8)
     n = max(1, int(round(spec.duration * fps)))
     for i in range(n):
         t = i / fps
-        z = 1 + 0.06 * _ease(t / max(spec.duration, 0.1))
-        m = cv2.getRotationMatrix2D((w / 2, h / 2), 0, z)
-        yield cv2.warpAffine(bg, m, (w, h), borderMode=cv2.BORDER_REFLECT)
+        yield stage.frame(t, zoom=1 + 0.06 * fx.ease(t / max(spec.duration, 0.1)), focus=(0.5, 0.42))
 
 
 def render_scene(spec: SceneSpec, out: Path, w: int, h: int, fps: int, preset: str, crf: int,
@@ -289,6 +272,7 @@ def render_scene(spec: SceneSpec, out: Path, w: int, h: int, fps: int, preset: s
     else:
         frames = _product_frames(spec, w, h, fps)
     total = max(1, int(round(spec.duration * fps)))
+    post = fx.Post(w, h, fx.hex_bgr(spec.palette[2]))
     cmd = ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}", "-r", str(fps),
            "-i", "-", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", str(out)]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -296,7 +280,9 @@ def render_scene(spec: SceneSpec, out: Path, w: int, h: int, fps: int, preset: s
         for i, frame in enumerate(frames):
             if should_cancel and i % 15 == 0 and should_cancel():
                 raise Cancelled()
-            proc.stdin.write(frame.tobytes())
+            t = i / fps
+            flash = max(0.0, 1 - t / 0.35) * 0.28 if i > 0 or spec.entry != "pop" else 0.0
+            proc.stdin.write(post.apply(frame, i, flash).tobytes())
             if on_frame and i % 10 == 0:
                 on_frame(i, total)
         proc.stdin.close()

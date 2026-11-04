@@ -101,7 +101,9 @@ def _detail(project: Project, db: Session) -> dict:
         procedural = not sc.image_asset or (sc.image_asset.meta or {}).get("engine") == "procedural"
         has_cut = bool(d["cutout_url"] and d["cutout_usable"]) or (
             bool(sc.image_asset) and not procedural and "cutout_usable" not in (sc.image_asset.meta or {}))
-        d["resolved_layout"] = pipeline.resolve_layout(sc, has_cut, n_photos, procedural)
+        ia = sc.image_asset
+        shot = bool(ia and not procedural and ia.width and ia.height and 1.6 <= ia.height / ia.width <= 2.4)
+        d["resolved_layout"] = pipeline.resolve_layout(sc, has_cut and not shot, n_photos, procedural, shot)
         d["narration_stale"] = bool(sc.narration.strip()) and (
             sc.narration_asset_id is None
             or sc.narration_signature != pipeline._narr_signature(sc.narration, provider, s["voice_gender"],

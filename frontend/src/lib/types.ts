@@ -30,7 +30,7 @@ export interface ProjectSettings {
   narration_enabled: boolean; narration_mode: "tts" | "upload"; narration_asset_id: string | null;
   tts_provider: string | null; voice_gender: "female" | "male"; voice_speed: number;
   subtitles_enabled: boolean; subtitle_style: string; font: string; palette: string[];
-  watermark: Watermark; end_card: EndCard; logo_asset_id: string | null; fit_duration: boolean;
+  watermark: Watermark; end_card: EndCard; logo_asset_id: string | null; fit_duration: boolean; sfx_enabled: boolean; stage_effects: boolean;
 }
 
 export interface Scene {

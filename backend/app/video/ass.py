@@ -194,13 +194,49 @@ class AssDoc:
 
     # ---------- elementos ----------
 
+    def _rich(self, text: str, reveal: bool, base_color: str | None = None, hl_color: str | None = None) -> str:
+        """Texto com destaque *palavra* na cor de destaque e revelação palavra a palavra."""
+        accent = _c(hl_color or self.pal[2])
+        base = _c(base_color or self.pal[3])
+        out, hl, k = [], False, 0
+        for token in re.split(r"(\*|\s+)", text):
+            if token == "*":
+                hl = not hl
+                continue
+            if not token:
+                continue
+            if token.isspace():
+                out.append(" ")
+                continue
+            word = esc(token)
+            color = f"\\c{accent}" if hl else (f"\\c{base}" if "*" in text else "")
+            if reveal:
+                d = 70 * k
+                out.append(f"{{{color}\\alpha&HFF&\\blur6\\fscx85\\fscy85\\t({d},{d + 280},\\alpha&H00&\\blur0"
+                           f"\\fscx100\\fscy100)}}{word}")
+            else:
+                out.append(f"{{{color}}}{word}" if color else word)
+            k += 1
+        return "".join(out)
+
     def add_text(self, ev: TextEvent) -> None:
         start = ev.start + ev.delay
         if ev.end - start < 0.2 or not ev.text.strip():
             return
-        text = esc(ev.text.upper() if ev.style in ("Title", "TitleBox", "EndName", "Kinetic") and self.font in UPPERCASE_FONTS else ev.text)
+        raw = ev.text.upper() if ev.style in ("Title", "TitleBox", "EndName", "Kinetic") and self.font in UPPERCASE_FONTS else ev.text
         extra = f"\\an{ev.align}" if ev.align != 5 else ""
-        body = self._anim(ev.animation, ev.x, ev.y, int((ev.end - start) * 1000), text, extra)
+        reveal = ev.style in ("Title", "EndName") and ev.animation in ("fade", "slide_up", "slide_left", "blur_in")
+        if reveal or "*" in raw:
+            boxed = ev.style in ("TitleBox", "EndCta")
+            text = self._rich(raw, reveal, self.on_accent if boxed else None, self.pal[1] if boxed else None)
+            anim = "reveal" if reveal else ev.animation
+        else:
+            text, anim = esc(raw.replace("*", "")), ev.animation
+        if anim == "reveal":
+            d = int(self.m * 0.03)
+            body = f"{{\\fad(0,220)\\move({ev.x},{ev.y + d},{ev.x},{ev.y},0,450){extra}}}{text}"
+        else:
+            body = self._anim(anim, ev.x, ev.y, int((ev.end - start) * 1000), text, extra)
         self.events.append(f"Dialogue: 1,{ts(start)},{ts(ev.end)},{ev.style},,{ev.margin_l},{ev.margin_r},0,,{body}")
 
     def add_title(self, start: float, end: float, text: str, x: int, y: int, anim: str, role: str = "",
@@ -249,7 +285,7 @@ class AssDoc:
                            f"\\fad(300,200)\\org({x},{yy:.0f})\\fscx0\\t(200,800,\\fscx100)")
             return int(y + block_h / 2 + self.m * 0.07)
         if st == "glow":
-            glow = self._anim(anim, x, y, int(dur * 1000), esc(text),
+            glow = self._anim(anim, x, y, int(dur * 1000), esc(text.replace("*", "")),
                               f"\\an{an}\\blur12\\bord6\\3c{_c(accent)}\\3a&H60&\\1a&HFF&")
             self.events.append(f"Dialogue: 0,{ts(start)},{ts(end)},Title,,{ml},{mr},0,,{glow}")
             self.add_text(ev("Title", anim))
@@ -340,7 +376,7 @@ class AssDoc:
 
     def add_kinetic(self, start: float, end: float, text: str, y: int) -> None:
         """Tipografia cinética: palavras grandes, uma por linha, entrando alternadas com bloco de cor."""
-        words = text.replace("\\N", " ").split()
+        words = text.replace("\\N", " ").replace("*", "").split()
         if not words:
             return
         lines: list[str] = []

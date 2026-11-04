@@ -111,6 +111,8 @@ class ProjectSettingsIn(Strict):
     end_card: EndCardIn | None = None
     logo_asset_id: uuid.UUID | None = None
     fit_duration: bool | None = None
+    sfx_enabled: bool | None = None
+    stage_effects: bool | None = None
     photo_asset_ids: list[uuid.UUID] | None = Field(default=None, max_length=20)
 
     @field_validator("format")

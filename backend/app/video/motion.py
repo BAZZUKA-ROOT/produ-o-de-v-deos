@@ -46,13 +46,17 @@ def _window(motion: str, p: float, k: float) -> tuple[float, float, float]:
 def render_clip(source: np.ndarray, out: Path, w: int, h: int, duration: float, fps: int, motion: str,
                 preset: str = "veryfast", crf: int = 16,
                 on_frame: Callable[[int, int], None] | None = None,
-                should_cancel: Callable[[], bool] | None = None) -> Path:
+                should_cancel: Callable[[], bool] | None = None,
+                accent: tuple[int, int, int] = (61, 200, 255)) -> Path:
     frames = max(1, int(round(duration * fps)))
     sh, sw = source.shape[:2]
     k = sw / w if motion != "none" else 1.0
     cmd = ["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}", "-r", str(fps),
            "-i", "-", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p", str(out)]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    from app.video.fx import Post
+
+    post = Post(w, h, accent, bloom=0.3)
     static = None
     if motion == "none":
         static = cv2.resize(source, (w, h), interpolation=cv2.INTER_AREA).tobytes()
@@ -61,7 +65,7 @@ def render_clip(source: np.ndarray, out: Path, w: int, h: int, duration: float, 
             if should_cancel and i % 15 == 0 and should_cancel():
                 raise Cancelled()
             if static is not None:
-                buf = static
+                buf = post.apply(np.frombuffer(static, np.uint8).reshape(h, w, 3).copy(), i).tobytes()
             else:
                 z, cx, cy = _window(motion, i / max(frames - 1, 1), min(k, MOTION_MARGIN))
                 ws, hs = sw / z, sh / z
@@ -71,7 +75,7 @@ def render_clip(source: np.ndarray, out: Path, w: int, h: int, duration: float, 
                 m = np.array([[a, 0, x0], [0, a, y0]], np.float32)
                 frame = cv2.warpAffine(source, m, (w, h), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
                                        borderMode=cv2.BORDER_REFLECT)
-                buf = frame.tobytes()
+                buf = post.apply(frame, i, max(0.0, 1 - i / fps / 0.3) * 0.18 if i else 0.0).tobytes()
             proc.stdin.write(buf)
             if on_frame and i % 10 == 0:
                 on_frame(i, frames)

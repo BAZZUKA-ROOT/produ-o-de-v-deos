@@ -41,6 +41,10 @@ function textStyle(anim: string, local: number): React.CSSProperties {
 const PRICE = /(R\$\s?\d[\d.,]*|\d{1,3}\s?%)/i;
 const lum = (hex: string) => { const n = parseInt(hex.slice(1), 16); return (0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; };
 
+function Markup({ text, accent }: { text: string; accent: string }) {
+  return <>{text.split("*").map((part, i) => (i % 2 ? <span key={i} style={{ color: accent }}>{part}</span> : <span key={i}>{part}</span>))}</>;
+}
+
 function TitleView({ text, role, style, font, m, pal, local }: { text: string; role: string; style: string; font: string; m: number; pal: string[]; local: number }) {
   const upper = UPPER.has(font);
   const size = m * (upper ? 0.135 : 0.105);
@@ -59,14 +63,14 @@ function TitleView({ text, role, style, font, m, pal, local }: { text: string; r
   }
   const common: React.CSSProperties = { fontFamily: font, fontSize: size, textTransform: upper ? "uppercase" : undefined };
   if (style === "comercial" || style === "criativo") {
-    return <p className="font-bold leading-[1.1]" style={{ ...common, color: onAccent, background: pal[2], padding: "0.12em 0.3em", transform: style === "criativo" ? "rotate(-2.5deg)" : undefined, boxShadow: "0 6px 18px rgba(0,0,0,.35)" }}>{text}</p>;
+    return <p className="font-bold leading-[1.1]" style={{ ...common, color: onAccent, background: pal[2], padding: "0.12em 0.3em", transform: style === "criativo" ? "rotate(-2.5deg)" : undefined, boxShadow: "0 6px 18px rgba(0,0,0,.35)" }}><Markup text={text} accent={pal[2]} /></p>;
   }
   const shadow = style === "tecnologico" ? `0 0 ${m * 0.03}px ${pal[2]}, 0 2px 6px #000` : "0 3px 10px rgba(0,0,0,.6), 0 0 2px #000";
   const line = <span className="block" style={{ height: Math.max(2, m / 400), width: m * 0.22 * grow, background: pal[2], margin: "0 auto" }} />;
   return (
     <div className="flex flex-col items-center gap-[0.35em]">
       {style === "elegante" && line}
-      <p className="font-bold leading-[1.05]" style={{ ...common, color: pal[3], textShadow: shadow }}>{text}</p>
+      <p className="font-bold leading-[1.05]" style={{ ...common, color: pal[3], textShadow: shadow }}><Markup text={text} accent={pal[2]} /></p>
       {style === "elegante" && line}
       {(style === "moderno" || style === "profissional") && <span className="block rounded-full" style={{ height: Math.max(5, m * 0.014), width: m * 0.16 * grow, background: pal[2] }} />}
     </div>
@@ -104,7 +108,7 @@ function Badge({ text, m, pal, local }: { text: string; m: number; pal: string[]
 
 function Kinetic({ text, m, w, pal, font, local }: { text: string; m: number; w: number; pal: string[]; font: string; local: number }) {
   const upper = UPPER.has(font);
-  const words = text.split(/\s+/).filter(Boolean);
+  const words = text.replace(/\*/g, "").split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   for (const wd of words) {
     if (lines.length && lines[lines.length - 1].length + wd.length < 9 && wd.length <= 4) lines[lines.length - 1] += ` ${wd}`;
@@ -270,9 +274,10 @@ export function Player({ project, timeline, onSelect, time, setTime }: {
             const t = time - ts.start;
             const bg = sc.image?.url;
             const layout = sc.layout === "auto" ? sc.resolved_layout ?? "fullscreen" : sc.layout;
-            const g = geometry(layout, size.w, size.h);
-            const productUrl = sc.cutout_url;
-            const productLayout = ["hero", "price", "features", "cta"].includes(layout) && productUrl;
+            const g = geometry(layout === "phone" || layout === "laptop" ? (sc.bullets.trim() ? "features" : "hero") : layout, size.w, size.h);
+            const mock = layout === "phone" || layout === "laptop";
+            const productUrl = mock ? bg ?? null : sc.cutout_url;
+            const productLayout = (["hero", "price", "features", "cta"].includes(layout) || mock) && productUrl;
             const studio = `radial-gradient(ellipse at ${(g.box?.[0] ?? 0.5) * 100}% ${(g.box?.[1] ?? 0.5) * 100}%, ${pal[1]} 0%, ${pal[0]} 75%)`;
             const titleBlock = (sc.title || sc.subtitle) && local > 0 && (
               <div className={clsx("absolute flex -translate-y-1/2 flex-col gap-[0.6em]", g.left ? "items-start text-left" : "inset-x-[8%] items-center text-center")}
@@ -296,7 +301,7 @@ export function Player({ project, timeline, onSelect, time, setTime }: {
                 <div key={sc.id} className="absolute inset-0 overflow-hidden" style={{ opacity, background: studio }}>
                   <div className="absolute" style={{ left: `${(cx - bw / 2) * 100}%`, top: `${(cy - bh / 2) * 100}%`, width: `${bw * 100}%`, height: `${bh * 100}%`,
                     transform: `translate(${slide}%, ${rise + Math.sin(t * 1.6) * 0.6}%) scale(${(0.72 + 0.28 * e) * (1 + 0.05 * ease(p))})`, opacity: Math.min(t / 0.35, 1) }}>
-                    <img src={productUrl!} alt="" className="size-full object-contain" style={{ filter: "drop-shadow(0 18px 18px rgba(0,0,0,.45))" }} />
+                    <img src={productUrl!} alt="" className={clsx("size-full object-contain", mock && "mx-auto", layout === "phone" && "w-auto rounded-[12%] border-[6px] border-neutral-800 bg-black", layout === "laptop" && "rounded-md border-[8px] border-neutral-900")} style={{ filter: "drop-shadow(0 18px 18px rgba(0,0,0,.45))" }} />
                   </div>
                   {titleBlock}
                   {g.badge && sc.title && PRICE.test(sc.title) && local > 0 && (

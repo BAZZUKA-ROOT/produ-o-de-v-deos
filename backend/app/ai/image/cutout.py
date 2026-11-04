@@ -53,6 +53,31 @@ def _sess():
     return _session
 
 
+def refine_alpha(alpha: np.ndarray, strength: float = 0.025) -> np.ndarray:
+    """Limpa a máscara: remove fiapos/linhas finas (abertura morfológica), suaviza o contorno e
+    aplica borda suave de 1–2 px (sem serrilhado)."""
+    h, w = alpha.shape
+    binm = (alpha > 0.5).astype(np.uint8)
+    ys, xs = np.where(binm)
+    if ys.size == 0:
+        return alpha
+    obj = min(ys.max() - ys.min(), xs.max() - xs.min())
+    k = max(3, int(obj * strength)) | 1
+    opened = cv2.morphologyEx(binm, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(opened, 8)
+    if n > 1:
+        areas = stats[1:, cv2.CC_STAT_AREA]
+        keep = np.zeros(n, bool)
+        keep[1:] = areas >= areas.max() * 0.08
+        opened = keep[labels].astype(np.uint8)
+    # suavização do contorno: blur + re-threshold
+    sm = cv2.GaussianBlur(opened.astype(np.float32), (0, 0), max(1.0, obj * 0.004))
+    hard = (sm > 0.5).astype(np.float32)
+    edge = cv2.GaussianBlur(hard, (0, 0), 0.8)
+    # forma limpa com borda suave, preservando furos reais (ex.: vão entre alças) da máscara original
+    return (edge * np.clip(alpha * 1.15, 0, 1)).astype(np.float32)
+
+
 def _mask(rgb: np.ndarray) -> np.ndarray:
     h, w = rgb.shape[:2]
     x = cv2.resize(rgb, (SIZE, SIZE), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
@@ -82,6 +107,7 @@ def remove_background(src: Path, out: Path) -> CutoutResult:
         alpha = alpha * cv2.dilate(keep[labels].astype(np.uint8), np.ones((9, 9), np.uint8))
     alpha = cv2.GaussianBlur(alpha.astype(np.float32), (3, 3), 0)
     alpha = np.clip((alpha - 0.12) / 0.88, 0, 1)
+    alpha = refine_alpha(alpha)
     # descontaminação de borda: substitui a cor dos pixels semitransparentes pela cor interna próxima
     solid = (alpha > 0.97).astype(np.float32)
     k = max(3, int(max(rgb.shape[:2]) * 0.004)) | 1

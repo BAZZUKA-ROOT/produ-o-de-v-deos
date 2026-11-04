@@ -73,6 +73,9 @@ class RenderPlan:
     watermark_image: Path | None = None
     watermark_position: str = "top_right"
     watermark_opacity: float = 0.6
+    sfx: bool = True
+    stage_effects: bool = True
+    sfx_volume: float = 0.55
     end_card: EndCardPlan = field(default_factory=EndCardPlan)
     x264_preset: str = "medium"
     crf: int = 20
@@ -163,8 +166,16 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
         clip = work_dir / f"scene_{i:02d}.mp4"
         if sp.layout in ("hero", "price", "features", "cta") and sp.product is not None or \
                 sp.layout == "gallery" and len(sp.photos) >= 2 or sp.layout == "kinetic":
-            entry = {"price": "slide_left", "cta": "slide_up"}.get(sp.layout, "pop")
-            spec = compose.SceneSpec(sp.layout, so.duration, plan.palette, sp.product, sp.photos, entry)
+            tall = False
+            if sp.product is not None:
+                from PIL import Image as _Im
+
+                with _Im.open(sp.product) as _p:
+                    tall = _p.height > _p.width * 1.3
+            entry = {"price": "slide_left", "cta": "rise", "features": "rise"}.get(
+                sp.layout, "swing" if tall else "pop")
+            spec = compose.SceneSpec(sp.layout, so.duration, plan.palette, sp.product, sp.photos, entry, seed=i + 1,
+                                     stage=plan.stage_effects)
             compose.render_scene(spec, clip, w, h, fps, clip_preset, clip_crf,
                                  bg_image=sp.image if sp.layout == "kinetic" else None,
                                  on_frame=frame_cb(done_s, so.duration), should_cancel=should_cancel)
@@ -260,11 +271,13 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
     acc = durations[0]
     trans = [so.transition for so in tl.scenes] + []
     t_outs = [so.trans_out for so in tl.scenes]
+    trans_times: list[float] = []
     for i in range(1, len(clip_paths)):
         name = trans[i - 1] if i - 1 < len(trans) else "fade"
         name = "fade" if name in ("none", "", None) else name
         td = t_outs[i - 1]
         off = max(acc - td, 0.01)
+        trans_times.append(off)
         fc.append(f"[{last}][v{i}]xfade=transition={name}:duration={td:.3f}:offset={off:.3f}[x{i}]")
         last = f"x{i}"
         acc = acc + durations[i] - td
@@ -325,7 +338,25 @@ def render(plan: RenderPlan, out_path: Path, work_dir: Path, progress: ProgressC
         inputs += ["-f", "lavfi", "-t", f"{total:.3f}", "-i", "anullsrc=r=48000:cl=stereo"]
         fc.append(f"[{idx}:a]anull[amixed]")
         idx += 1
-    fc.append(f"[amixed]apad,atrim=0:{total:.3f},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
+    if plan.sfx:
+        from app.ai.music import sfx as sfx_mod
+
+        events: list[tuple[float, str]] = [(max(0.0, tt - 0.32), "whoosh") for tt in trans_times]
+        for sp, so in zip(plan.scenes, tl.scenes):
+            if sp.layout in ("hero", "cta", "kinetic", "price") or so.start == 0:
+                events.append((so.start + (0.12 if so.start > 0 else 0.0), "hit"))
+            if sp.layout in ("hero", "price"):
+                events.append((so.start + 1.0, "shimmer"))
+        if tl.end_card_start is not None:
+            events.append((tl.end_card_start + 0.3, "hit"))
+        sfx_path = sfx_mod.build_track(events, total, work_dir / "sfx.wav", gain=0.9)
+        inputs += ["-i", str(sfx_path)]
+        fc.append(f"[{idx}:a]aresample=48000,aformat=channel_layouts=stereo,volume={plan.sfx_volume:.2f}[sfx]")
+        fc.append("[amixed][sfx]amix=inputs=2:normalize=0:duration=first[amixed2]")
+        idx += 1
+        fc.append(f"[amixed2]apad,atrim=0:{total:.3f},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
+    else:
+        fc.append(f"[amixed]apad,atrim=0:{total:.3f},loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
 
     preset = "veryfast" if preview else plan.x264_preset
     crf = 28 if preview else plan.crf

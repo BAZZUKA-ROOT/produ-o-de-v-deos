@@ -251,8 +251,12 @@ def ensure_cutout(db: Session, asset: Asset) -> tuple[Path | None, bool]:
     return storage.abs_path(c.storage_path), res.usable
 
 
-def resolve_layout(sc: Scene, has_cutout: bool, n_photos: int, procedural: bool) -> str:
+def resolve_layout(sc: Scene, has_cutout: bool, n_photos: int, procedural: bool, screenshot: bool = False) -> str:
     lay = sc.layout or "auto"
+    if lay in ("phone", "laptop"):
+        return "fullscreen" if procedural else lay
+    if lay == "auto" and screenshot and not procedural:
+        return "phone"
     if lay != "auto":
         if lay in PRODUCT_LAYOUTS and not has_cutout:
             return "fullscreen"
@@ -300,13 +304,26 @@ def build_plan(db: Session, project: Project, quality: str, ctx: JobContext | No
         procedural = bool(sc.image_asset and (sc.image_asset.meta or {}).get("engine") == "procedural")
         product, usable = (None, False)
         wants_product = (sc.layout or "auto") in ("auto", *PRODUCT_LAYOUTS)
+        if sc.image_asset and sc.image_asset.width and sc.image_asset.height and \
+                1.6 <= sc.image_asset.height / sc.image_asset.width <= 2.4 and (sc.layout or "auto") == "auto":
+            wants_product = False  # prints de celular viram mockup, não recorte
         if sc.image_asset and not procedural and wants_product:
             if ctx:
                 ctx.progress(0.4, f"Recortando produto da cena {sc.position + 1}", force=True)
             product, usable = ensure_cutout(db, sc.image_asset)
             if sc.layout in PRODUCT_LAYOUTS and product is not None:
                 usable = True
-        layout = resolve_layout(sc, usable and product is not None, len(photos), procedural)
+        screenshot = False
+        if sc.image_asset and not procedural and sc.image_asset.width and sc.image_asset.height:
+            screenshot = 1.6 <= sc.image_asset.height / sc.image_asset.width <= 2.4 and not usable
+        layout = resolve_layout(sc, usable and product is not None, len(photos), procedural, screenshot)
+        if layout in ("phone", "laptop"):
+            from app.video import mockup
+
+            mk = get_settings().temp_dir / f"mockup_{sc.id.hex}_{layout}.png"
+            (mockup.phone if layout == "phone" else mockup.laptop)(img, mk)
+            product = mk
+            layout = "features" if sc.bullets.strip() else "hero"
         scenes.append(renderer.ScenePlan(
             layout=layout, product=product if layout in PRODUCT_LAYOUTS else None,
             photos=photos if layout == "gallery" else [],
@@ -353,6 +370,7 @@ def build_plan(db: Session, project: Project, quality: str, ctx: JobContext | No
             company=company.get("name") or project.name, lines=lines,
         ),
         x264_preset=rcfg["x264_preset"], crf=int(rcfg["crf"]), fonts_dir=get_settings().fonts_dir,
+        sfx=bool(s.get("sfx_enabled", True)), stage_effects=bool(s.get("stage_effects", True)),
     )
 
 

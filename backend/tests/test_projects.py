@@ -38,7 +38,9 @@ def test_full_flow_script_edit_render(client, user_headers):
     tlj = client.get(f"/api/projects/{p['id']}/timeline", headers=user_headers).json()
     assert tlj["total"] > 0
     job = client.post(f"/api/projects/{p['id']}/preview", headers=user_headers).json()
-    assert job["status"] == "completed", job
+    if job["status"] != "completed":
+        job = client.get(f"/api/jobs/{job['id']}", headers=user_headers).json()
+    assert job["status"] == "completed", (job.get("error"), (job.get("logs") or "")[-800:])
     p = client.get(f"/api/projects/{p['id']}", headers=user_headers).json()
     assert p["preview"] and p["preview"]["kind"] == "video"
     video = client.get(p["preview"]["url"])

@@ -58,6 +58,8 @@ export function ProjectPanel({ project, opts, onSettings, onCompany, onName }: {
             </div>
           </Field>
           <Toggle checked={s.fit_duration} onChange={(v) => onSettings({ fit_duration: v })} label="Ajustar automaticamente à duração alvo" />
+          <Toggle checked={s.stage_effects ?? true} onChange={(v) => onSettings({ stage_effects: v })} label="Palco animado (feixes de luz, grade e partículas)" />
+          <Toggle checked={s.sfx_enabled ?? true} onChange={(v) => onSettings({ sfx_enabled: v })} label="Efeitos sonoros (whoosh, impactos)" />
           <div className="rounded-lg border border-line p-3">
             <Toggle checked={s.subtitles_enabled} onChange={(v) => onSettings({ subtitles_enabled: v })} label="Legendas automáticas" />
             {s.subtitles_enabled && <Field label="Estilo das legendas" className="mt-3"><Select value={s.subtitle_style} onChange={(e) => onSettings({ subtitle_style: e.target.value })} options={optionList(opts.subtitle_styles)} /></Field>}
