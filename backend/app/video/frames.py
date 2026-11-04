@@ -65,7 +65,7 @@ def end_card_image(path: Path, w: int, h: int, palette: list[str], logo_path: Pa
         with Image.open(logo_path) as lg:
             lg = lg.convert("RGBA")
             transparent = lg.getextrema()[3][0] < 200
-            box = int(min(w, h) * (0.5 if transparent else 0.34))
+            box = int(min(w, h) * ((0.5 if h > w else 0.34) if transparent else 0.34))
             lg.thumbnail((box, box), Image.Resampling.LANCZOS)
             y = int(h * 0.1) if h > w else int(h * 0.07)
             if transparent:
